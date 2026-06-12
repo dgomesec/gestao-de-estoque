@@ -42,7 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen, Printer, Mail, MessageCircle, BadgeCheck } from "lucide-react"
+import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen, Printer, Mail, MessageCircle, BadgeCheck, Copy } from "lucide-react"
 import { registerSaleItems, convertQuote, cancelQuote, deleteSale, updateSaleCustomer, type SaleKind } from "@/app/actions/sales"
 import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
@@ -51,6 +51,7 @@ import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from 
 
 type Sale = {
   id: number
+  productId: number | null
   productName: string | null
   sku: string | null
   kind: string
@@ -220,6 +221,63 @@ export function SalesManager({
     setCustomerId(NO_CUSTOMER)
     setCustomerText("")
     setOpen(true)
+  }
+
+  /**
+   * Duplica um pedido existente: abre o formulário de nova venda/orçamento já
+   * preenchido com os mesmos itens (produto, quantidade, preço e margem) e o
+   * mesmo cliente, para o vendedor revisar e salvar. Não altera o pedido
+   * original — apenas facilita criar um novo a partir dele.
+   */
+  function duplicateOrder(s: Sale) {
+    // Todas as linhas do mesmo pedido (compartilham groupId); senão, só a linha.
+    const rows = s.groupId ? sales.filter((r) => r.groupId === s.groupId) : [s]
+    const items: CartItem[] = []
+    let skipped = 0
+    for (const r of rows) {
+      const p = r.productId != null ? products.find((pp) => pp.id === r.productId) : undefined
+      if (!p) {
+        skipped++
+        continue
+      }
+      items.push({
+        productId: p.id,
+        name: p.name,
+        sku: p.sku,
+        color: p.color,
+        colorHex: p.colorHex,
+        available: p.quantity,
+        costUsd: Number(p.priceUsd),
+        marginMin: Number(p.marginMin),
+        marginMax: Number(p.marginMax),
+        quantity: r.quantity,
+        unitPriceUsd: Number(r.unitPriceUsd),
+        marginPct: Number(r.marginPct),
+      })
+    }
+    if (items.length === 0) {
+      toast.error("Não foi possível duplicar: os produtos não estão mais disponíveis.")
+      return
+    }
+    setKind(s.kind === "quote" ? "quote" : "sale")
+    setCart(items)
+    setSearch("")
+    setProductColor("all")
+    setUseManualRate(false)
+    setManualRate(rate)
+    if (s.customerId) {
+      setCustomerId(String(s.customerId))
+      setCustomerText("")
+    } else {
+      setCustomerId(NO_CUSTOMER)
+      setCustomerText(s.customer ?? "")
+    }
+    setOpen(true)
+    if (skipped > 0) {
+      toast.warning(`${skipped} item(ns) indisponível(is) não foram incluídos na cópia.`)
+    } else {
+      toast.success("Pedido duplicado. Revise os itens e salve.")
+    }
   }
 
   // Adiciona um produto ao carrinho, sugerindo preço pela margem mínima.
@@ -549,8 +607,14 @@ export function SalesManager({
               </DropdownMenuItem>
             )}
 
-            {(perms.update || perms.delete) && <DropdownMenuSeparator />}
+            {(perms.update || perms.delete || perms.create) && <DropdownMenuSeparator />}
 
+            {perms.create && (
+              <DropdownMenuItem onClick={() => duplicateOrder(s)}>
+                <Copy className="mr-2 size-4" />
+                Duplicar pedido
+              </DropdownMenuItem>
+            )}
             {perms.update && (
               <DropdownMenuItem onClick={() => openEditCustomer(s)}>
                 <UserPen className="mr-2 size-4" />

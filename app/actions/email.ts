@@ -3,7 +3,7 @@
 import { Resend } from 'resend'
 import { requirePermission } from '@/lib/rbac'
 import { getOrderByGroupId, getBaseUrl, type Order } from '@/lib/orders'
-import { formatBRL, formatDateTime } from '@/lib/format'
+import { formatBRL, formatDateTime, formatSaleCode } from '@/lib/format'
 import { logAudit } from '@/lib/audit'
 
 // Remetente: usa um domínio verificado no Resend se configurado, senão o
@@ -37,9 +37,10 @@ export async function sendOrderEmail(groupId: string) {
   const approvalUrl = order.approvalToken ? `${base}/orcamento/${order.approvalToken}` : null
   const receiptUrl = `${base}/recibo/${order.groupId}`
 
+  const code = formatSaleCode(order.kind, order.id)
   const subject = isQuote
-    ? `Seu orçamento - ${order.store.name}`
-    : `Seu recibo de compra - ${order.store.name}`
+    ? `Seu orçamento ${code} - ${order.store.name}`
+    : `Seu recibo de compra ${code} - ${order.store.name}`
 
   const html = buildHtml(order, { isQuote, approvalUrl, receiptUrl })
 
@@ -113,7 +114,7 @@ function buildHtml(
       }
       <h1 style="margin:0;font-size:20px;">${escapeHtml(store.name)}</h1>
       ${storeContact ? `<p style="margin:4px 0 0;color:#888;font-size:12px;">${storeContact}</p>` : ''}
-      <p style="margin:4px 0 0;color:#666;font-size:14px;">${isQuote ? 'Orçamento' : 'Recibo de venda'} · ${formatDateTime(order.createdAt)}</p>
+      <p style="margin:4px 0 0;color:#666;font-size:14px;">${isQuote ? 'Orçamento' : 'Recibo de venda'} <strong>${formatSaleCode(order.kind, order.id)}</strong> · ${formatDateTime(order.createdAt)}</p>
     </div>
 
     <p style="margin:20px 0 4px;">Olá, <strong>${escapeHtml(order.customer.name ?? 'cliente')}</strong>!</p>

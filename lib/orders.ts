@@ -19,6 +19,9 @@ export type OrderItem = {
 }
 
 export type Order = {
+  // Número representativo do pedido (menor id do grupo), usado no código
+  // legível do recibo (ex.: VND-000015 / ORC-000015).
+  id: number
   groupId: string
   kind: "sale" | "quote"
   createdAt: Date
@@ -76,6 +79,7 @@ function mapRows(
   })
 
   return {
+    id: first.id,
     groupId: first.groupId ?? "",
     kind: (first.kind as "sale" | "quote") ?? "sale",
     createdAt: first.createdAt,
