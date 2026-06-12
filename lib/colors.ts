@@ -73,6 +73,77 @@ export function detectColor(name: string | null | undefined): DetectedColor | nu
 }
 
 /**
+ * Detecta TODAS as cores presentes no nome do produto, sem repetição, na ordem
+ * em que aparecem (esquerda para direita). Cores que compartilham o mesmo
+ * rótulo (ex.: "maroon"/"burgundy" -> Bordô) contam como uma só.
+ */
+export function detectColors(name: string | null | undefined): DetectedColor[] {
+  if (!name) return []
+  const lower = name.toLowerCase()
+  const found: { color: DetectedColor; index: number }[] = []
+
+  for (const [key, val] of Object.entries(COLOR_MAP)) {
+    const re = new RegExp(`\\b${key}\\b`, "i")
+    const m = lower.match(re)
+    if (m && m.index !== undefined) {
+      found.push({ color: { key, label: val.label, hex: val.hex }, index: m.index })
+    }
+  }
+
+  found.sort((a, b) => a.index - b.index)
+  const out: DetectedColor[] = []
+  const seenLabels = new Set<string>()
+  for (const f of found) {
+    if (seenLabels.has(f.color.label)) continue
+    seenLabels.add(f.color.label)
+    out.push(f.color)
+  }
+  return out
+}
+
+// Índice reverso: rótulo em português -> cor de exibição. Permite recuperar o
+// hex a partir da cor persistida no banco (que guarda o rótulo, não o termo).
+const LABEL_MAP = new Map<string, DetectedColor>()
+for (const [key, val] of Object.entries(COLOR_MAP)) {
+  if (!LABEL_MAP.has(val.label)) {
+    LABEL_MAP.set(val.label, { key, label: val.label, hex: val.hex })
+  }
+}
+
+/**
+ * Resolve a cor de exibição a partir de um rótulo em português (ex.: "Azul").
+ * Retorna null se o rótulo não for reconhecido.
+ */
+export function colorFromLabel(label: string | null | undefined): DetectedColor | null {
+  if (!label) return null
+  return LABEL_MAP.get(label.trim()) ?? null
+}
+
+/**
+ * Todas as cores disponíveis (rótulos únicos), ordenadas alfabeticamente.
+ * Usado para montar o seletor de cor no formulário de produto.
+ */
+export const ALL_COLORS: DetectedColor[] = Array.from(LABEL_MAP.values()).sort((a, b) =>
+  a.label.localeCompare(b.label, "pt-BR"),
+)
+
+/**
+ * Quebra uma cor persistida (que pode ser uma lista "Azul, Preto") em rótulos
+ * individuais, resolvendo o hex de cada um. Rótulos desconhecidos recebem um
+ * cinza neutro para ainda exibirem o nome.
+ */
+export function parseStoredColors(stored: string | null | undefined): DetectedColor[] {
+  if (!stored) return []
+  return stored
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(
+      (label) => colorFromLabel(label) ?? { key: label.toLowerCase(), label, hex: "#9ca3af" },
+    )
+}
+
+/**
  * Lista as cores distintas detectadas em uma coleção de nomes, ordenadas
  * alfabeticamente pelo rótulo. Útil para montar filtros de cor.
  */

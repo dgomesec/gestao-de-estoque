@@ -46,7 +46,7 @@ import { Plus, MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
 import { createProduct, updateProduct, deleteProduct, deleteProducts, type ProductInput } from "@/app/actions/products"
 import { ProductImport } from "@/components/product-import"
 import { ColorTag } from "@/components/color-tag"
-import { distinctColors, detectColor } from "@/lib/colors"
+import { detectColor, colorFromLabel, ALL_COLORS } from "@/lib/colors"
 import { formatBRL, formatUSD, formatPct } from "@/lib/format"
 
 type Product = {
@@ -54,6 +54,7 @@ type Product = {
   sku: string
   name: string
   description: string | null
+  color: string | null
   quantity: number
   priceUsd: string
   marginMin: string
@@ -74,6 +75,7 @@ const EMPTY: ProductInput = {
   sku: "",
   name: "",
   description: "",
+  color: "",
   quantity: 0,
   priceUsd: 0,
   marginMin: 0,
@@ -101,8 +103,26 @@ export function ProductsManager({
   const [bulkOpen, setBulkOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  // Cores distintas detectadas nos nomes dos produtos (para o filtro por cor).
-  const colorOptions = useMemo(() => distinctColors(products.map((p) => p.name)), [products])
+  // Cor "efetiva" de um produto: usa a cor persistida (primeiro rótulo, caso
+  // haja variações) e, na ausência dela, detecta a partir do nome.
+  function effectiveColorLabel(p: Product): string | null {
+    const stored = p.color?.split(",")[0]?.trim()
+    if (stored) return stored
+    return detectColor(p.name)?.label ?? null
+  }
+
+  // Cores distintas dos produtos (para o filtro por cor).
+  const colorOptions = useMemo(() => {
+    const map = new Map<string, { label: string; hex: string }>()
+    for (const p of products) {
+      const label = effectiveColorLabel(p)
+      if (label && !map.has(label)) {
+        const c = colorFromLabel(label) ?? detectColor(p.name)
+        map.set(label, { label, hex: c?.hex ?? "#9ca3af" })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
+  }, [products])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -110,7 +130,7 @@ export function ProductsManager({
       const matchesText =
         !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
       const matchesColor =
-        colorFilter === "all" || detectColor(p.name)?.label === colorFilter
+        colorFilter === "all" || (p.color ?? "").split(",").map((s) => s.trim()).includes(colorFilter) || effectiveColorLabel(p) === colorFilter
       return matchesText && matchesColor
     })
   }, [products, query, colorFilter])
@@ -127,6 +147,7 @@ export function ProductsManager({
       sku: p.sku,
       name: p.name,
       description: p.description ?? "",
+      color: p.color ?? "",
       quantity: p.quantity,
       priceUsd: Number(p.priceUsd),
       marginMin: Number(p.marginMin),
@@ -361,7 +382,7 @@ export function ProductsManager({
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{p.name}</span>
-                            <ColorTag name={p.name} />
+                            <ColorTag name={p.name} color={p.color} />
                             {p.importSource && p.importSource !== "manual" && (
                               <Badge variant="outline" className="text-[10px] uppercase">
                                 {SOURCE_LABELS[p.importSource] ?? p.importSource}
@@ -453,6 +474,38 @@ export function ProductsManager({
             <div className="space-y-1.5">
               <Label htmlFor="name">Nome</Label>
               <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="color">Cor</Label>
+              <Select
+                value={form.color ? form.color : "none"}
+                onValueChange={(v) => setForm({ ...form, color: v === "none" ? "" : (v ?? "") })}
+              >
+                <SelectTrigger id="color" className="w-full">
+                  <SelectValue placeholder="Sem cor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem cor (detectar pelo nome)</SelectItem>
+                  {ALL_COLORS.map((c) => (
+                    <SelectItem key={c.label} value={c.label}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="size-2.5 rounded-full border border-black/10"
+                          style={{ backgroundColor: c.hex }}
+                        />
+                        {c.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!form.color && detectColor(form.name) && (
+                <p className="text-xs text-muted-foreground">
+                  Detectado pelo nome: {detectColor(form.name)?.label}. Será salvo automaticamente.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">

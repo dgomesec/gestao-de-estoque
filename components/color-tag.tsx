@@ -1,32 +1,45 @@
-import { detectColor } from "@/lib/colors"
+import { detectColor, parseStoredColors } from "@/lib/colors"
 
 /**
- * Tag de cor detectada a partir do nome do produto. Mostra um indicador
- * circular com a cor real e o rótulo em português. Não renderiza nada quando
- * nenhuma cor é identificada no nome.
+ * Tag de cor do produto. Prioriza a cor PERSISTIDA (`color`), que pode conter
+ * várias cores separadas por vírgula (variações); nesse caso renderiza uma tag
+ * por cor. Se nenhuma cor persistida for informada, faz fallback para a
+ * detecção a partir do `name`. Não renderiza nada quando nada é identificado.
  */
 export function ColorTag({
   name,
+  color,
   showLabel = true,
   className,
 }: {
-  name: string | null | undefined
+  name?: string | null | undefined
+  color?: string | null | undefined
   showLabel?: boolean
   className?: string
 }) {
-  const color = detectColor(name)
-  if (!color) return null
+  const stored = parseStoredColors(color)
+  const colors = stored.length > 0 ? stored : (() => {
+    const c = detectColor(name)
+    return c ? [c] : []
+  })()
+
+  if (colors.length === 0) return null
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${className ?? ""}`}
-    >
-      <span
-        aria-hidden="true"
-        className="size-2.5 shrink-0 rounded-full border border-black/10"
-        style={{ backgroundColor: color.hex }}
-      />
-      {showLabel && <span>{color.label}</span>}
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {colors.map((c) => (
+        <span
+          key={c.key}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${className ?? ""}`}
+        >
+          <span
+            aria-hidden="true"
+            className="size-2.5 shrink-0 rounded-full border border-black/10"
+            style={{ backgroundColor: c.hex }}
+          />
+          {showLabel && <span>{c.label}</span>}
+        </span>
+      ))}
     </span>
   )
 }

@@ -27,6 +27,8 @@ const FIELD_ALIASES: Record<string, keyof ImportRow> = {
   descricao: "description",
   "descrição": "description",
   description: "description",
+  cor: "color",
+  color: "color",
   quantidade: "quantity",
   qtd: "quantity",
   quantity: "quantity",
@@ -75,7 +77,7 @@ function rowsFromRecords(records: Record<string, unknown>[]): ImportRow[] {
     for (const [rawKey, value] of Object.entries(rec)) {
       const field = FIELD_ALIASES[normalizeKey(rawKey)]
       if (!field) continue
-      if (field === "sku" || field === "name" || field === "description") {
+      if (field === "sku" || field === "name" || field === "description" || field === "color") {
         out[field] = value == null ? "" : String(value).trim()
       } else {
         out[field] = toNumber(value)
@@ -85,6 +87,7 @@ function rowsFromRecords(records: Record<string, unknown>[]): ImportRow[] {
       sku: out.sku ?? "",
       name: out.name ?? "",
       description: out.description,
+      color: out.color,
       quantity: out.quantity ?? 0,
       priceUsd: out.priceUsd ?? 0,
       marginMin: out.marginMin ?? 0,

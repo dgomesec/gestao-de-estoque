@@ -6,6 +6,17 @@ import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+import { detectColor } from '@/lib/colors'
+
+/**
+ * Define a cor a ser persistida: usa a cor informada explicitamente; se vazia,
+ * tenta detectar uma cor a partir do nome do produto.
+ */
+function resolveColor(name: string, explicit?: string | null): string | null {
+  const provided = explicit?.toString().trim()
+  if (provided) return provided
+  return detectColor(name)?.label ?? null
+}
 
 export type ImportSource = 'manual' | 'batch' | 'ai'
 
@@ -13,6 +24,7 @@ export type ProductInput = {
   sku: string
   name: string
   description?: string
+  color?: string | null
   quantity: number
   priceUsd: number
   marginMin: number
@@ -128,6 +140,7 @@ export async function createProduct(
       sku: input.sku.trim(),
       name: input.name.trim(),
       description: input.description?.trim() || null,
+      color: resolveColor(input.name, input.color),
       quantity: input.quantity,
       priceUsd: String(input.priceUsd),
       marginMin: String(input.marginMin),
@@ -178,6 +191,7 @@ export async function updateProduct(id: number, input: ProductInput) {
       sku: input.sku.trim(),
       name: input.name.trim(),
       description: input.description?.trim() || null,
+      color: resolveColor(input.name, input.color),
       priceUsd: String(input.priceUsd),
       marginMin: String(input.marginMin),
       marginMax: String(input.marginMax),
@@ -307,6 +321,7 @@ export type ImportRow = {
   sku: string
   name: string
   description?: string
+  color?: string | null
   quantity: number
   priceUsd: number
   marginMin: number
@@ -419,6 +434,7 @@ export async function importProducts(
         sku,
         name,
         description: row.description?.toString().trim() || null,
+        color: resolveColor(name, row.color),
         quantity,
         priceUsd: String(priceUsd),
         marginMin: String(marginMin),
