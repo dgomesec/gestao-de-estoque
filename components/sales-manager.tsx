@@ -142,6 +142,8 @@ export function SalesManager({
   const [editCustomerFor, setEditCustomerFor] = useState<Sale | null>(null)
   const [editCustomerId, setEditCustomerId] = useState<string>(NO_CUSTOMER)
   const [editCustomerText, setEditCustomerText] = useState("")
+  // Seleção (individual ou múltipla) de registros para ações em lote.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [isPending, startTransition] = useTransition()
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -428,6 +430,83 @@ export function SalesManager({
     window.open(url, "_blank", "noopener,noreferrer")
   }
 
+  // ----- Seleção (individual e múltipla) e ações em lote -----
+
+  function toggleOne(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Marca/desmarca todos os registros atualmente filtrados.
+  function toggleAll() {
+    setSelectedIds((prev) => {
+      const allSelected = filteredSales.length > 0 && filteredSales.every((s) => prev.has(s.id))
+      if (allSelected) return new Set()
+      return new Set(filteredSales.map((s) => s.id))
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  // Registros atualmente selecionados (dentro do filtro vigente).
+  const selectedSales = useMemo(
+    () => filteredSales.filter((s) => selectedIds.has(s.id)),
+    [filteredSales, selectedIds],
+  )
+
+  const allFilteredSelected =
+    filteredSales.length > 0 && filteredSales.every((s) => selectedIds.has(s.id))
+  const someFilteredSelected = filteredSales.some((s) => selectedIds.has(s.id))
+
+  // Abre o(s) recibo(s) dos registros selecionados (um por pedido/groupId).
+  function bulkReceipts() {
+    const groups = Array.from(new Set(selectedSales.map((s) => s.groupId).filter(Boolean) as string[]))
+    if (groups.length === 0) {
+      toast.error("Nenhum recibo disponível para a seleção.")
+      return
+    }
+    for (const g of groups) {
+      window.open(`/recibo/${g}`, "_blank", "noopener,noreferrer")
+    }
+    toast.success(`${groups.length} recibo(s) aberto(s) em nova(s) aba(s).`)
+  }
+
+  // Envia para aprovação por e-mail os pedidos selecionados (um e-mail por pedido).
+  function bulkSendEmail() {
+    const seen = new Set<string>()
+    const targets: Sale[] = []
+    for (const s of selectedSales) {
+      if (!s.groupId || seen.has(s.groupId)) continue
+      seen.add(s.groupId)
+      targets.push(s)
+    }
+    if (targets.length === 0) {
+      toast.error("Nenhum pedido válido na seleção.")
+      return
+    }
+    const withoutEmail = targets.filter((s) => !s.customerEmail).length
+    startTransition(async () => {
+      let sent = 0
+      const errors: string[] = []
+      for (const s of targets) {
+        if (!s.customerEmail) continue
+        const res = await sendOrderEmail(s.groupId!)
+        if (res.ok) sent++
+        else errors.push(`${formatSaleCode(s.kind, s.id)}: ${res.error}`)
+      }
+      if (sent > 0) toast.success(`${sent} e-mail(s) enviado(s) para aprovação.`)
+      if (withoutEmail > 0) toast.error(`${withoutEmail} pedido(s) sem e-mail do cliente foram ignorados.`)
+      if (errors.length > 0) toast.error(errors[0])
+      clearSelection()
+    })
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -483,10 +562,43 @@ export function SalesManager({
 
       <Card>
         <CardContent className="p-0">
+          {selectedIds.size > 0 && (
+            <div className="flex flex-col gap-3 border-b bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                <Badge variant="secondary">{selectedIds.size} selecionado(s)</Badge>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={clearSelection}>
+                  Limpar seleção
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" className="gap-2" onClick={bulkReceipts} disabled={isPending}>
+                  <Printer className="size-4" aria-hidden="true" />
+                  Gerar recibo
+                </Button>
+                <Button size="sm" className="gap-2" onClick={bulkSendEmail} disabled={isPending}>
+                  <Mail className="size-4" aria-hidden="true" />
+                  {isPending ? "Enviando..." : "Enviar para aprovação"}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary align-middle"
+                      aria-label="Selecionar todos"
+                      checked={allFilteredSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected
+                      }}
+                      onChange={toggleAll}
+                      disabled={filteredSales.length === 0}
+                    />
+                  </TableHead>
                   <TableHead>Identificador</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Tipo</TableHead>
@@ -502,15 +614,25 @@ export function SalesManager({
               <TableBody>
                 {filteredSales.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
                       Nenhum registro encontrado.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredSales.map((s) => {
                     const isQuote = s.kind === "quote"
+                    const isSelected = selectedIds.has(s.id)
                     return (
-                      <TableRow key={s.id}>
+                      <TableRow key={s.id} data-state={isSelected ? "selected" : undefined}>
+                        <TableCell className="w-10">
+                          <input
+                            type="checkbox"
+                            className="size-4 accent-primary align-middle"
+                            aria-label={`Selecionar ${formatSaleCode(s.kind, s.id)}`}
+                            checked={isSelected}
+                            onChange={() => toggleOne(s.id)}
+                          />
+                        </TableCell>
                         <TableCell className="whitespace-nowrap font-mono text-xs font-medium">
                           {formatSaleCode(s.kind, s.id)}
                         </TableCell>
@@ -556,62 +678,78 @@ export function SalesManager({
                           {formatBRL(Number(s.profitBrl))}
                         </TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button variant="ghost" size="icon" aria-label="Ações">
-                                  <MoreHorizontal className="size-4" />
-                                </Button>
-                              }
-                            />
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openReceipt(s)}>
-                                <Printer className="mr-2 size-4" />
-                                Ver / imprimir recibo
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleSendEmail(s)} disabled={isPending}>
-                                <Mail className="mr-2 size-4" />
-                                Enviar por e-mail
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openWhatsApp(s)}>
-                                <MessageCircle className="mr-2 size-4" />
-                                Enviar pelo WhatsApp
-                              </DropdownMenuItem>
+                          <div className="flex items-center justify-end gap-1">
+                            {isQuote && s.approvedAt && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-chart-2 hover:text-chart-2"
+                                aria-label="Contato por WhatsApp"
+                                title="Falar com o cliente no WhatsApp"
+                                onClick={() => openWhatsApp(s)}
+                              >
+                                <MessageCircle className="size-4" />
+                              </Button>
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                render={
+                                  <Button variant="ghost" size="icon" aria-label="Ações">
+                                    <MoreHorizontal className="size-4" />
+                                  </Button>
+                                }
+                              />
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openReceipt(s)}>
+                                  <Printer className="mr-2 size-4" />
+                                  Ver / imprimir recibo
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleSendEmail(s)} disabled={isPending}>
+                                  <Mail className="mr-2 size-4" />
+                                  {isQuote ? "Enviar para aprovação" : "Enviar por e-mail"}
+                                </DropdownMenuItem>
+                                {isQuote && s.approvedAt && (
+                                  <DropdownMenuItem onClick={() => openWhatsApp(s)}>
+                                    <MessageCircle className="mr-2 size-4" />
+                                    Falar no WhatsApp
+                                  </DropdownMenuItem>
+                                )}
 
-                              {(perms.update || perms.delete) && <DropdownMenuSeparator />}
+                                {(perms.update || perms.delete) && <DropdownMenuSeparator />}
 
-                              {perms.update && (
-                                <DropdownMenuItem onClick={() => openEditCustomer(s)}>
-                                  <UserPen className="mr-2 size-4" />
-                                  Editar cliente
-                                </DropdownMenuItem>
-                              )}
-                              {isQuote && perms.update && (
-                                <DropdownMenuItem onClick={() => handleConvert(s)}>
-                                  <CheckCircle2 className="mr-2 size-4" />
-                                  Converter em venda
-                                </DropdownMenuItem>
-                              )}
-                              {isQuote && perms.delete && (
-                                <DropdownMenuItem
-                                  onClick={() => handleCancel(s)}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <XCircle className="mr-2 size-4" />
-                                  Cancelar orçamento
-                                </DropdownMenuItem>
-                              )}
-                              {!isQuote && perms.delete && (
-                                <DropdownMenuItem
-                                  onClick={() => handleDelete(s)}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="mr-2 size-4" />
-                                  Excluir venda
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                {perms.update && (
+                                  <DropdownMenuItem onClick={() => openEditCustomer(s)}>
+                                    <UserPen className="mr-2 size-4" />
+                                    Editar cliente
+                                  </DropdownMenuItem>
+                                )}
+                                {isQuote && perms.update && (
+                                  <DropdownMenuItem onClick={() => handleConvert(s)}>
+                                    <CheckCircle2 className="mr-2 size-4" />
+                                    Converter em venda
+                                  </DropdownMenuItem>
+                                )}
+                                {isQuote && perms.delete && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleCancel(s)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <XCircle className="mr-2 size-4" />
+                                    Cancelar orçamento
+                                  </DropdownMenuItem>
+                                )}
+                                {!isQuote && perms.delete && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleDelete(s)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 size-4" />
+                                    Excluir venda
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
