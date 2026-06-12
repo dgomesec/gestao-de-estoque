@@ -103,6 +103,9 @@ export const products = pgTable("products", {
   sku: text("sku").notNull().unique(),
   name: text("name").notNull(),
   description: text("description"),
+  // Cor do produto. Para um único produto, o rótulo em português (ex.: "Azul").
+  // Para variações, uma lista separada por vírgula (ex.: "Azul, Preto").
+  color: text("color"),
   quantity: integer("quantity").notNull().default(0),
   // All monetary values entered in USD.
   priceUsd: numeric("priceUsd", { precision: 12, scale: 2 }).notNull(),

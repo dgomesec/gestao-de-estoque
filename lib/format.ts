@@ -39,6 +39,15 @@ export function formatDate(value: Date | string): string {
   })
 }
 
+/**
+ * Identificador único e legível de uma venda/orçamento, derivado do id e do
+ * tipo. Ex.: VND-000123 (venda) ou ORC-000123 (orçamento).
+ */
+export function formatSaleCode(kind: string, id: number): string {
+  const prefix = kind === 'quote' ? 'ORC' : 'VND'
+  return `${prefix}-${String(id).padStart(6, '0')}`
+}
+
 /** Mês atual no formato "YYYY-MM". */
 export function currentMonth(): string {
   const d = new Date()

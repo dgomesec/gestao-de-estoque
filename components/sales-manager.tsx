@@ -41,9 +41,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X } from "lucide-react"
-import { registerSaleItems, convertQuote, cancelQuote, deleteSale, type SaleKind } from "@/app/actions/sales"
-import { formatBRL, formatUSD, formatDateTime, formatPct } from "@/lib/format"
+import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen } from "lucide-react"
+import { registerSaleItems, convertQuote, cancelQuote, deleteSale, updateSaleCustomer, type SaleKind } from "@/app/actions/sales"
+import { ColorTag } from "@/components/color-tag"
+import { distinctColors, detectColor } from "@/lib/colors"
+import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from "@/lib/format"
 
 type Sale = {
   id: number
@@ -119,16 +121,43 @@ export function SalesManager({
   const [customerId, setCustomerId] = useState<string>(NO_CUSTOMER)
   const [customerText, setCustomerText] = useState("")
   const [filter, setFilter] = useState<"all" | "sale" | "quote">("all")
+  // Busca livre na lista de vendas (código, produto, SKU, cliente).
+  const [listQuery, setListQuery] = useState("")
+  // Filtro por cor na lista de vendas.
+  const [listColor, setListColor] = useState<string>("all")
+  // Edição de cliente de um registro já existente.
+  const [editCustomerFor, setEditCustomerFor] = useState<Sale | null>(null)
+  const [editCustomerId, setEditCustomerId] = useState<string>(NO_CUSTOMER)
+  const [editCustomerText, setEditCustomerText] = useState("")
   const [isPending, startTransition] = useTransition()
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const effectiveRate = useManualRate && manualRate > 0 ? manualRate : rate
   const factor = effectiveRate * (1 + protectionPct / 100)
 
+  // Cores distintas presentes nos produtos vendidos (para o filtro por cor).
+  const colorOptions = useMemo(() => distinctColors(sales.map((s) => s.productName)), [sales])
+
   const filteredSales = useMemo(() => {
-    if (filter === "all") return sales
-    return sales.filter((s) => s.kind === filter)
-  }, [sales, filter])
+    const q = listQuery.trim().toLowerCase()
+    return sales.filter((s) => {
+      if (filter !== "all" && s.kind !== filter) return false
+      if (listColor !== "all" && detectColor(s.productName)?.label !== listColor) return false
+      if (!q) return true
+      const code = formatSaleCode(s.kind, s.id).toLowerCase()
+      const haystack = [
+        code,
+        String(s.id),
+        s.productName ?? "",
+        s.sku ?? "",
+        s.customerName ?? "",
+        s.customer ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [sales, filter, listQuery, listColor])
 
   // Resultados da busca por nome ou SKU (somente produtos com estoque e ainda não no carrinho).
   const searchResults = useMemo(() => {
@@ -288,6 +317,30 @@ export function SalesManager({
     })
   }
 
+  // Abre o diálogo de edição de cliente já preenchido com o vínculo atual.
+  function openEditCustomer(s: Sale) {
+    setEditCustomerFor(s)
+    setEditCustomerId(s.customerId ? String(s.customerId) : NO_CUSTOMER)
+    setEditCustomerText(s.customerId ? "" : s.customer ?? "")
+  }
+
+  function saveEditCustomer() {
+    const s = editCustomerFor
+    if (!s) return
+    startTransition(async () => {
+      try {
+        await updateSaleCustomer(s.id, {
+          customerId: editCustomerId !== NO_CUSTOMER ? Number(editCustomerId) : null,
+          customer: editCustomerId === NO_CUSTOMER ? editCustomerText : null,
+        })
+        toast.success("Cliente atualizado")
+        setEditCustomerFor(null)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao atualizar cliente")
+      }
+    })
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -306,12 +359,48 @@ export function SalesManager({
         )}
       </div>
 
+      {/* Busca por identificador, produto, SKU ou cliente + filtro por cor. */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative w-full sm:max-w-md">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            placeholder="Buscar por identificador, produto, SKU ou cliente"
+            value={listQuery}
+            onChange={(e) => setListQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {colorOptions.length > 0 && (
+          <Select value={listColor} onValueChange={(v) => setListColor(v ?? "all")}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="Cor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as cores</SelectItem>
+              {colorOptions.map((c) => (
+                <SelectItem key={c.label} value={c.label}>
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="size-2.5 rounded-full border border-black/10"
+                      style={{ backgroundColor: c.hex }}
+                    />
+                    {c.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Identificador</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Produto</TableHead>
@@ -326,7 +415,7 @@ export function SalesManager({
               <TableBody>
                 {filteredSales.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                       Nenhum registro encontrado.
                     </TableCell>
                   </TableRow>
@@ -335,6 +424,9 @@ export function SalesManager({
                     const isQuote = s.kind === "quote"
                     return (
                       <TableRow key={s.id}>
+                        <TableCell className="whitespace-nowrap font-mono text-xs font-medium">
+                          {formatSaleCode(s.kind, s.id)}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {formatDateTime(s.createdAt)}
                         </TableCell>
@@ -345,13 +437,18 @@ export function SalesManager({
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="font-medium">{s.productName ?? "—"}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{s.productName ?? "—"}</span>
+                            <ColorTag name={s.productName} />
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             SKU {s.sku ?? "—"} · {formatUSD(Number(s.unitPriceUsd))}/un
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">
-                          {s.customerName ?? s.customer ?? "—"}
+                          {s.customerName ?? s.customer ?? (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{s.quantity}</TableCell>
                         <TableCell className="text-right tabular-nums text-sm">
@@ -364,8 +461,7 @@ export function SalesManager({
                           {formatBRL(Number(s.profitBrl))}
                         </TableCell>
                         <TableCell>
-                          {((isQuote && (perms.update || perms.delete)) ||
-                            (!isQuote && perms.delete)) && (
+                          {(perms.update || perms.delete) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger
                                 render={
@@ -375,6 +471,12 @@ export function SalesManager({
                                 }
                               />
                               <DropdownMenuContent align="end">
+                                {perms.update && (
+                                  <DropdownMenuItem onClick={() => openEditCustomer(s)}>
+                                    <UserPen className="mr-2 size-4" />
+                                    Editar cliente
+                                  </DropdownMenuItem>
+                                )}
                                 {isQuote && perms.update && (
                                   <DropdownMenuItem onClick={() => handleConvert(s)}>
                                     <CheckCircle2 className="mr-2 size-4" />
@@ -465,8 +567,9 @@ export function SalesManager({
                         >
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{p.name}</span>
-                            <span className="block truncate text-xs text-muted-foreground">
-                              SKU {p.sku} · {formatUSD(Number(p.priceUsd))}/un
+                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <span className="truncate">SKU {p.sku} · {formatUSD(Number(p.priceUsd))}/un</span>
+                              <ColorTag name={p.name} className="border-transparent px-0 py-0" showLabel={false} />
                             </span>
                           </span>
                           <Badge variant="secondary" className="shrink-0">
@@ -504,7 +607,10 @@ export function SalesManager({
                     <div key={item.productId} className="rounded-lg border p-3">
                       <div className="mb-2 flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate font-medium">{item.name}</p>
+                          <p className="flex items-center gap-2 truncate font-medium">
+                            <span className="truncate">{item.name}</span>
+                            <ColorTag name={item.name} className="border-transparent px-0 py-0" showLabel={false} />
+                          </p>
                           <p className="truncate text-xs text-muted-foreground">
                             SKU {item.sku} · custo {formatUSD(item.costUsd)} · {item.available} disp.
                           </p>
@@ -656,6 +762,56 @@ export function SalesManager({
                 : kind === "quote"
                   ? "Registrar orçamento"
                   : "Registrar venda"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edição do cliente de uma venda/orçamento já registrado. */}
+      <Dialog open={editCustomerFor !== null} onOpenChange={(o) => !o && setEditCustomerFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Editar cliente
+              {editCustomerFor ? ` · ${formatSaleCode(editCustomerFor.kind, editCustomerFor.id)}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              Vincule um cliente cadastrado ou informe um nome avulso para este registro.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label>Cliente</Label>
+            <Select value={editCustomerId} onValueChange={(v) => setEditCustomerId(v ?? NO_CUSTOMER)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CUSTOMER}>Sem cliente / avulso</SelectItem>
+                {customers.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                    {c.phone ? ` · ${c.phone}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {editCustomerId === NO_CUSTOMER && (
+              <Input
+                className="mt-2"
+                placeholder="Nome do cliente avulso (opcional)"
+                value={editCustomerText}
+                onChange={(e) => setEditCustomerText(e.target.value)}
+              />
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditCustomerFor(null)} disabled={isPending}>
+              Cancelar
+            </Button>
+            <Button onClick={saveEditCustomer} disabled={isPending}>
+              {isPending ? "Salvando..." : "Salvar cliente"}
             </Button>
           </DialogFooter>
         </DialogContent>

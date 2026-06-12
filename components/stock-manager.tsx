@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner"
 import { ArrowDownToLine, ArrowUpFromLine, Search, X, Plus } from "lucide-react"
 import { registerMovements } from "@/app/actions/stock"
+import { ColorTag } from "@/components/color-tag"
 import { formatDateTime } from "@/lib/format"
 
 type Movement = {
@@ -210,7 +211,10 @@ export function StockManager({
                         {formatDateTime(m.createdAt)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{m.productName ?? "—"}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{m.productName ?? "—"}</span>
+                          <ColorTag name={m.productName} />
+                        </div>
                         <div className="text-xs text-muted-foreground">SKU {m.sku ?? "—"}</div>
                       </TableCell>
                       <TableCell>
@@ -239,7 +243,7 @@ export function StockManager({
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
               {type === "in" ? "Registrar entrada de estoque" : "Registrar saída de estoque"}
@@ -288,8 +292,9 @@ export function StockManager({
                         >
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{p.name}</span>
-                            <span className="block truncate text-xs text-muted-foreground">
-                              SKU {p.sku}
+                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <span className="truncate">SKU {p.sku}</span>
+                              <ColorTag name={p.name} className="border-transparent px-0 py-0" showLabel={false} />
                             </span>
                           </span>
                           <span className="flex shrink-0 items-center gap-2">
@@ -330,8 +335,9 @@ export function StockManager({
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-medium">{item.name}</p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              SKU {item.sku} · {item.available} em estoque
+                            <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                              <span className="truncate">SKU {item.sku} · {item.available} em estoque</span>
+                              <ColorTag name={item.name} className="border-transparent px-0 py-0" showLabel={false} />
                             </p>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
