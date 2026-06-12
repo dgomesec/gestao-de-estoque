@@ -1,4 +1,4 @@
-import { formatBRL, formatDateTime } from "@/lib/format"
+import { formatBRL, formatDateTime, formatSaleCode } from "@/lib/format"
 import type { Order } from "@/lib/orders"
 
 /**
@@ -8,7 +8,7 @@ import type { Order } from "@/lib/orders"
  */
 export function ReceiptView({ order }: { order: Order }) {
   const isQuote = order.kind === "quote"
-  const code = `${isQuote ? "ORC" : "VND"}-${order.groupId.slice(0, 8).toUpperCase()}`
+  const code = formatSaleCode(order.kind, order.id)
   const { store } = order
 
   return (
