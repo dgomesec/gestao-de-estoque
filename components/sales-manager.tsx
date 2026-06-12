@@ -44,7 +44,7 @@ import { toast } from "sonner"
 import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen } from "lucide-react"
 import { registerSaleItems, convertQuote, cancelQuote, deleteSale, updateSaleCustomer, type SaleKind } from "@/app/actions/sales"
 import { ColorTag } from "@/components/color-tag"
-import { distinctColors, detectColor } from "@/lib/colors"
+import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
 import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from "@/lib/format"
 
 type Sale = {
@@ -70,6 +70,8 @@ type ProductOpt = {
   id: number
   name: string
   sku: string
+  color: string | null
+  colorHex: string | null
   quantity: number
   priceUsd: string
   marginMin: string
@@ -85,6 +87,8 @@ type CartItem = {
   productId: number
   name: string
   sku: string
+  color: string | null
+  colorHex: string | null
   available: number
   costUsd: number
   marginMin: number
@@ -115,6 +119,8 @@ export function SalesManager({
   const [kind, setKind] = useState<SaleKind>("sale")
   const [cart, setCart] = useState<CartItem[]>([])
   const [search, setSearch] = useState("")
+  // Filtro por cor aplicado à busca de produtos do carrinho.
+  const [productColor, setProductColor] = useState<string>("all")
   const [searchFocused, setSearchFocused] = useState(false)
   const [useManualRate, setUseManualRate] = useState(false)
   const [manualRate, setManualRate] = useState(rate)
@@ -159,21 +165,47 @@ export function SalesManager({
     })
   }, [sales, filter, listQuery, listColor])
 
+  // Cor "efetiva" de um produto: usa a cor persistida (primeiro rótulo, caso
+  // haja variações) e, na ausência dela, detecta a partir do nome.
+  function productColorLabel(p: ProductOpt): string | null {
+    const stored = p.color?.split(",")[0]?.trim()
+    if (stored) return stored
+    return detectColor(p.name)?.label ?? null
+  }
+
+  // Cores distintas dos produtos disponíveis (para o filtro da busca no carrinho).
+  const productColorOptions = useMemo(() => {
+    const map = new Map<string, { label: string; hex: string }>()
+    for (const p of products) {
+      const label = productColorLabel(p)
+      if (label && !map.has(label)) {
+        const hex = colorFromLabel(label)?.hex ?? detectColor(p.name)?.hex ?? "#9ca3af"
+        map.set(label, { label, hex })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
+  }, [products])
+
   // Resultados da busca por nome ou SKU (somente produtos com estoque e ainda não no carrinho).
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase()
     const inCart = new Set(cart.map((c) => c.productId))
-    const base = products.filter((p) => p.quantity > 0 && !inCart.has(p.id))
+    const base = products.filter((p) => {
+      if (p.quantity <= 0 || inCart.has(p.id)) return false
+      if (productColor !== "all" && productColorLabel(p) !== productColor) return false
+      return true
+    })
     if (!q) return base.slice(0, 8)
     return base
       .filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
       .slice(0, 8)
-  }, [search, products, cart])
+  }, [search, products, cart, productColor])
 
   function openDialog() {
     setKind("sale")
     setCart([])
     setSearch("")
+    setProductColor("all")
     setUseManualRate(false)
     setManualRate(rate)
     setCustomerId(NO_CUSTOMER)
@@ -192,6 +224,8 @@ export function SalesManager({
         productId: p.id,
         name: p.name,
         sku: p.sku,
+        color: p.color,
+        colorHex: p.colorHex,
         available: p.quantity,
         costUsd: cost,
         marginMin: min,
@@ -535,26 +569,27 @@ export function SalesManager({
             {/* Busca por digitação (nome ou SKU) com resultados em dropdown. */}
             <div className="space-y-1.5">
               <Label htmlFor="product-search">Adicionar produto</Label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  id="product-search"
-                  className="pl-9"
-                  placeholder="Digite o nome ou SKU do produto..."
-                  value={search}
-                  autoComplete="off"
-                  onChange={(e) => setSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => {
-                    blurTimeout.current = setTimeout(() => setSearchFocused(false), 150)
-                  }}
-                />
-                {searchFocused && searchResults.length > 0 && (
-                  <ul
-                    className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
-                    role="listbox"
-                  >
-                    {searchResults.map((p) => (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    id="product-search"
+                    className="pl-9"
+                    placeholder="Digite o nome ou SKU do produto..."
+                    value={search}
+                    autoComplete="off"
+                    onChange={(e) => setSearch(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => {
+                      blurTimeout.current = setTimeout(() => setSearchFocused(false), 150)
+                    }}
+                  />
+                  {searchFocused && searchResults.length > 0 && (
+                    <ul
+                      className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
+                      role="listbox"
+                    >
+                      {searchResults.map((p) => (
                       <li key={p.id}>
                         <button
                           type="button"
@@ -569,7 +604,7 @@ export function SalesManager({
                             <span className="block truncate font-medium">{p.name}</span>
                             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <span className="truncate">SKU {p.sku} · {formatUSD(Number(p.priceUsd))}/un</span>
-                              <ColorTag name={p.name} className="border-transparent px-0 py-0" showLabel={false} />
+                              <ColorTag name={p.name} color={p.color} hex={p.colorHex} className="border-transparent px-0 py-0" showLabel={false} />
                             </span>
                           </span>
                           <Badge variant="secondary" className="shrink-0">
@@ -580,10 +615,33 @@ export function SalesManager({
                     ))}
                   </ul>
                 )}
-                {searchFocused && search.trim() && searchResults.length === 0 && (
-                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-3 text-sm text-muted-foreground shadow-md">
-                    Nenhum produto encontrado.
-                  </div>
+                  {searchFocused && search.trim() && searchResults.length === 0 && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-3 text-sm text-muted-foreground shadow-md">
+                      Nenhum produto encontrado.
+                    </div>
+                  )}
+                </div>
+                {productColorOptions.length > 0 && (
+                  <Select value={productColor} onValueChange={(v) => setProductColor(v ?? "all")}>
+                    <SelectTrigger className="w-full sm:w-44" aria-label="Filtrar produtos por cor">
+                      <SelectValue placeholder="Cor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as cores</SelectItem>
+                      {productColorOptions.map((c) => (
+                        <SelectItem key={c.label} value={c.label}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              aria-hidden="true"
+                              className="size-2.5 rounded-full border border-black/10"
+                              style={{ backgroundColor: c.hex }}
+                            />
+                            {c.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             </div>
@@ -609,7 +667,7 @@ export function SalesManager({
                         <div className="min-w-0">
                           <p className="flex items-center gap-2 truncate font-medium">
                             <span className="truncate">{item.name}</span>
-                            <ColorTag name={item.name} className="border-transparent px-0 py-0" showLabel={false} />
+                            <ColorTag name={item.name} color={item.color} hex={item.colorHex} className="border-transparent px-0 py-0" showLabel={false} />
                           </p>
                           <p className="truncate text-xs text-muted-foreground">
                             SKU {item.sku} · custo {formatUSD(item.costUsd)} · {item.available} disp.

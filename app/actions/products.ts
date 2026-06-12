@@ -6,16 +6,33 @@ import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { detectColor } from '@/lib/colors'
+import { detectColor, colorFromLabel, normalizeHex, nearestNamedColor } from '@/lib/colors'
 
 /**
- * Define a cor a ser persistida: usa a cor informada explicitamente; se vazia,
- * tenta detectar uma cor a partir do nome do produto.
+ * Resolve o par (rótulo, hex) a ser persistido para a cor de um produto.
+ * Prioridade:
+ *  1. HEX explícito -> hex normalizado; rótulo = o informado ou a cor nomeada
+ *     mais próxima da paleta.
+ *  2. Rótulo explícito -> hex = o da paleta para aquele rótulo.
+ *  3. Sem nada -> detecta pelo nome do produto.
  */
-function resolveColor(name: string, explicit?: string | null): string | null {
-  const provided = explicit?.toString().trim()
-  if (provided) return provided
-  return detectColor(name)?.label ?? null
+function resolveColorFields(
+  name: string,
+  explicitLabel?: string | null,
+  explicitHex?: string | null,
+): { color: string | null; colorHex: string | null } {
+  const label = explicitLabel?.toString().trim() || null
+  const hex = normalizeHex(explicitHex)
+
+  if (hex) {
+    const resolvedLabel = label ?? nearestNamedColor(hex)?.label ?? null
+    return { color: resolvedLabel, colorHex: hex }
+  }
+  if (label) {
+    return { color: label, colorHex: colorFromLabel(label)?.hex ?? null }
+  }
+  const detected = detectColor(name)
+  return { color: detected?.label ?? null, colorHex: detected?.hex ?? null }
 }
 
 export type ImportSource = 'manual' | 'batch' | 'ai'
@@ -25,6 +42,7 @@ export type ProductInput = {
   name: string
   description?: string
   color?: string | null
+  colorHex?: string | null
   quantity: number
   priceUsd: number
   marginMin: number
@@ -140,7 +158,7 @@ export async function createProduct(
       sku: input.sku.trim(),
       name: input.name.trim(),
       description: input.description?.trim() || null,
-      color: resolveColor(input.name, input.color),
+      ...resolveColorFields(input.name, input.color, input.colorHex),
       quantity: input.quantity,
       priceUsd: String(input.priceUsd),
       marginMin: String(input.marginMin),
@@ -191,7 +209,7 @@ export async function updateProduct(id: number, input: ProductInput) {
       sku: input.sku.trim(),
       name: input.name.trim(),
       description: input.description?.trim() || null,
-      color: resolveColor(input.name, input.color),
+      ...resolveColorFields(input.name, input.color, input.colorHex),
       priceUsd: String(input.priceUsd),
       marginMin: String(input.marginMin),
       marginMax: String(input.marginMax),
@@ -322,6 +340,7 @@ export type ImportRow = {
   name: string
   description?: string
   color?: string | null
+  colorHex?: string | null
   quantity: number
   priceUsd: number
   marginMin: number
@@ -434,7 +453,7 @@ export async function importProducts(
         sku,
         name,
         description: row.description?.toString().trim() || null,
-        color: resolveColor(name, row.color),
+        ...resolveColorFields(name, row.color, row.colorHex),
         quantity,
         priceUsd: String(priceUsd),
         marginMin: String(marginMin),

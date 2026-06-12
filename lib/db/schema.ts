@@ -106,6 +106,10 @@ export const products = pgTable("products", {
   // Cor do produto. Para um único produto, o rótulo em português (ex.: "Azul").
   // Para variações, uma lista separada por vírgula (ex.: "Azul, Preto").
   color: text("color"),
+  // Cor exata em HEX (ex.: "#3b82f6"), quando definida manualmente pelo usuário.
+  // Complementa o rótulo: o rótulo serve para agrupar/filtrar, o HEX para exibir
+  // a tonalidade exata escolhida.
+  colorHex: text("colorHex"),
   quantity: integer("quantity").notNull().default(0),
   // All monetary values entered in USD.
   priceUsd: numeric("priceUsd", { precision: 12, scale: 2 }).notNull(),

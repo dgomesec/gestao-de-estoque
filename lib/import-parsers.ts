@@ -77,7 +77,7 @@ function rowsFromRecords(records: Record<string, unknown>[]): ImportRow[] {
     for (const [rawKey, value] of Object.entries(rec)) {
       const field = FIELD_ALIASES[normalizeKey(rawKey)]
       if (!field) continue
-      if (field === "sku" || field === "name" || field === "description" || field === "color") {
+      if (field === "sku" || field === "name" || field === "description" || field === "color" || field === "colorHex") {
         out[field] = value == null ? "" : String(value).trim()
       } else {
         out[field] = toNumber(value)
