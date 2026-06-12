@@ -155,3 +155,55 @@ export function distinctColors(names: (string | null | undefined)[]): DetectedCo
   }
   return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
 }
+
+// --- Suporte a HEX ----------------------------------------------------------
+
+/**
+ * Normaliza um código HEX informado pelo usuário. Aceita com/sem "#" e o
+ * formato curto de 3 dígitos (ex.: "fff" -> "#ffffff"). Retorna null se não for
+ * um HEX válido.
+ */
+export function normalizeHex(input: string | null | undefined): string | null {
+  if (!input) return null
+  let hex = input.trim().replace(/^#/, "").toLowerCase()
+  if (/^[0-9a-f]{3}$/.test(hex)) {
+    hex = hex
+      .split("")
+      .map((c) => c + c)
+      .join("")
+  }
+  if (/^[0-9a-f]{6}$/.test(hex)) return `#${hex}`
+  return null
+}
+
+/** Converte um HEX válido (#rrggbb) em componentes RGB. */
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace(/^#/, "")
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  }
+}
+
+/**
+ * Encontra, na paleta nomeada, a cor cujo HEX é mais próximo do HEX informado.
+ * Usa distância euclidiana ponderada no espaço RGB (boa o suficiente para
+ * "encaixar" um HEX livre num rótulo). Retorna null se o HEX for inválido.
+ */
+export function nearestNamedColor(input: string | null | undefined): DetectedColor | null {
+  const hex = normalizeHex(input)
+  if (!hex) return null
+  const target = hexToRgb(hex)
+  let best: { color: DetectedColor; dist: number } | null = null
+  for (const c of ALL_COLORS) {
+    const rgb = hexToRgb(c.hex)
+    // Pesos perceptuais aproximados (olho humano é mais sensível ao verde).
+    const dr = (target.r - rgb.r) * 0.3
+    const dg = (target.g - rgb.g) * 0.59
+    const db = (target.b - rgb.b) * 0.11
+    const dist = dr * dr + dg * dg + db * db
+    if (!best || dist < best.dist) best = { color: c, dist }
+  }
+  return best?.color ?? null
+}

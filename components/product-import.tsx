@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "sonner"
-import { Upload, FileSpreadsheet, Sparkles, Download, FileText, Loader2 } from "lucide-react"
+import { Upload, FileSpreadsheet, Sparkles, Download, FileText, Loader2, AlertTriangle } from "lucide-react"
 import { importProducts, type ImportRow, type ImportSource } from "@/app/actions/products"
 import { extractFromText, extractFromFile } from "@/app/actions/ai-import"
 import {
@@ -34,11 +34,19 @@ import {
   fileToDataUrl,
 } from "@/lib/import-parsers"
 import { formatUSD } from "@/lib/format"
+import { detectColors } from "@/lib/colors"
+
+// Estratégia de tratamento de cores para um produto com MÚLTIPLAS cores no nome.
+// "variations" = uma única entrada com a lista de cores como variações.
+// "split"      = uma entrada para cada cor identificada.
+type ColorStrategy = "variations" | "split"
 
 export function ProductImport() {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState("lote")
   const [rows, setRows] = useState<ImportRow[]>([])
+  // Estratégia de cor escolhida para cada linha com múltiplas cores (por índice).
+  const [colorStrategies, setColorStrategies] = useState<Record<number, ColorStrategy>>({})
   const [source, setSource] = useState<ImportSource>("batch")
   const [pasted, setPasted] = useState("")
   const [analyzing, setAnalyzing] = useState(false)
@@ -48,7 +56,18 @@ export function ProductImport() {
 
   function reset() {
     setRows([])
+    setColorStrategies({})
     setPasted("")
+  }
+
+  // Monta o estado inicial de estratégias: toda linha com múltiplas cores começa
+  // como "variations" (uma entrada). O usuário pode alternar para "split".
+  function defaultStrategies(list: ImportRow[]): Record<number, ColorStrategy> {
+    const out: Record<number, ColorStrategy> = {}
+    list.forEach((r, i) => {
+      if (detectColors(r.name).length > 1) out[i] = "variations"
+    })
+    return out
   }
 
   async function handleBatchFile(file: File) {
@@ -68,6 +87,7 @@ export function ProductImport() {
       }
       setSource("batch")
       setRows(valid)
+      setColorStrategies(defaultStrategies(valid))
       toast.success(`${valid.length} linha(s) carregada(s). Revise e confirme.`)
     } catch {
       toast.error("Falha ao ler o arquivo.")
@@ -123,18 +143,18 @@ export function ProductImport() {
       return
     }
     setSource("ai")
-    setRows(
-      products.map((p) => ({
-        sku: p.sku,
-        name: p.name,
-        description: p.description ?? undefined,
-        quantity: p.quantity,
-        priceUsd: p.priceUsd,
-        marginMin: 15,
-        marginMax: 40,
-        reorderLevel: 5,
-      })),
-    )
+    const mapped: ImportRow[] = products.map((p) => ({
+      sku: p.sku,
+      name: p.name,
+      description: p.description ?? undefined,
+      quantity: p.quantity,
+      priceUsd: p.priceUsd,
+      marginMin: 15,
+      marginMax: 40,
+      reorderLevel: 5,
+    }))
+    setRows(mapped)
+    setColorStrategies(defaultStrategies(mapped))
     toast.success(
       `${products.length} produto(s) identificado(s)${currency ? ` (moeda: ${currency})` : ""}. Revise e confirme.`,
     )
@@ -142,13 +162,66 @@ export function ProductImport() {
 
   function updateRow(i: number, patch: Partial<ImportRow>) {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+    // Se o nome mudou, reavalia se a linha passa a ter (ou deixa de ter) múltiplas cores.
+    if (patch.name !== undefined) {
+      const multi = detectColors(patch.name).length > 1
+      setColorStrategies((prev) => {
+        const next = { ...prev }
+        if (multi && !next[i]) next[i] = "variations"
+        if (!multi && next[i]) delete next[i]
+        return next
+      })
+    }
+  }
+
+  function setStrategy(i: number, strategy: ColorStrategy) {
+    setColorStrategies((prev) => ({ ...prev, [i]: strategy }))
+  }
+
+  // Quantas linhas têm múltiplas cores detectadas (gatilho para o aviso).
+  const multiColorCount = rows.filter((r) => detectColors(r.name).length > 1).length
+
+  /**
+   * Expande as linhas conforme a estratégia de cor escolhida:
+   * - 0/1 cor: registra a cor detectada (ou vazia) na própria linha.
+   * - múltiplas + "variations": uma entrada com a lista de cores.
+   * - múltiplas + "split": uma entrada por cor, com SKU e nome sufixados.
+   */
+  function expandRows(): ImportRow[] {
+    const out: ImportRow[] = []
+    rows.forEach((r, i) => {
+      const colors = detectColors(r.name)
+      if (colors.length <= 1) {
+        out.push({ ...r, color: colors[0]?.label ?? null })
+        return
+      }
+      const strategy = colorStrategies[i] ?? "variations"
+      if (strategy === "variations") {
+        out.push({ ...r, color: colors.map((c) => c.label).join(", ") })
+      } else {
+        // Divide o estoque igualmente entre as cores (o resto vai para a primeira).
+        const base = Math.floor(r.quantity / colors.length)
+        const rest = r.quantity - base * colors.length
+        colors.forEach((c, ci) => {
+          out.push({
+            ...r,
+            sku: `${r.sku}-${c.label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 6)}`,
+            name: `${r.name} (${c.label})`,
+            color: c.label,
+            quantity: base + (ci === 0 ? rest : 0),
+          })
+        })
+      }
+    })
+    return out
   }
 
   function confirmImport() {
     if (rows.length === 0) return
+    const payload = expandRows()
     startTransition(async () => {
       try {
-        const result = await importProducts(rows, source)
+        const result = await importProducts(payload, source)
         if (result.imported > 0) {
           toast.success(`${result.imported} produto(s) importado(s) com sucesso.`)
         }
@@ -294,12 +367,29 @@ export function ProductImport() {
                   </h3>
                   <p className="text-xs text-muted-foreground">Edite os campos antes de confirmar</p>
                 </div>
+                {multiColorCount > 0 && (
+                  <div className="mb-3 flex gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+                    <div className="flex flex-col gap-1">
+                      <p className="font-medium text-amber-700 dark:text-amber-400">
+                        {multiColorCount === 1
+                          ? "1 produto tem várias cores no nome"
+                          : `${multiColorCount} produtos têm várias cores no nome`}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Para cada um, escolha na coluna <span className="font-medium">Cor</span> entre criar uma única
+                        entrada com variações de cores ou uma entrada separada para cada cor.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <div className="overflow-x-auto rounded-md border">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead className="min-w-28">SKU</TableHead>
                         <TableHead className="min-w-40">Nome</TableHead>
+                        <TableHead className="min-w-44">Cor</TableHead>
                         <TableHead className="w-20 text-right">Qtd</TableHead>
                         <TableHead className="w-28 text-right">Custo USD</TableHead>
                         <TableHead className="w-24 text-right">Mrg. mín %</TableHead>
@@ -321,6 +411,13 @@ export function ProductImport() {
                               value={r.name}
                               onChange={(e) => updateRow(i, { name: e.target.value })}
                               className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <ColorPreviewCell
+                              name={r.name}
+                              strategy={colorStrategies[i] ?? "variations"}
+                              onStrategyChange={(s) => setStrategy(i, s)}
                             />
                           </TableCell>
                           <TableCell>
@@ -377,5 +474,79 @@ export function ProductImport() {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+/**
+ * Célula de cor da pré-visualização. Mostra os pontos das cores detectadas no
+ * nome. Quando há mais de uma cor, oferece a escolha entre criar uma única
+ * entrada com variações ou uma entrada separada por cor.
+ */
+function ColorPreviewCell({
+  name,
+  strategy,
+  onStrategyChange,
+}: {
+  name: string
+  strategy: ColorStrategy
+  onStrategyChange: (s: ColorStrategy) => void
+}) {
+  const colors = detectColors(name)
+
+  if (colors.length === 0) {
+    return <span className="text-xs text-muted-foreground">—</span>
+  }
+
+  if (colors.length === 1) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs">
+        <span
+          aria-hidden="true"
+          className="size-2.5 shrink-0 rounded-full border border-black/10"
+          style={{ backgroundColor: colors[0].hex }}
+        />
+        {colors[0].label}
+      </span>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1">
+        {colors.map((c) => (
+          <span
+            key={c.key}
+            className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px]"
+          >
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full border border-black/10"
+              style={{ backgroundColor: c.hex }}
+            />
+            {c.label}
+          </span>
+        ))}
+      </div>
+      <div className="inline-flex rounded-md border p-0.5">
+        <button
+          type="button"
+          onClick={() => onStrategyChange("variations")}
+          className={`rounded px-2 py-0.5 text-[11px] font-medium ${
+            strategy === "variations" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+          }`}
+        >
+          Variações
+        </button>
+        <button
+          type="button"
+          onClick={() => onStrategyChange("split")}
+          className={`rounded px-2 py-0.5 text-[11px] font-medium ${
+            strategy === "split" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+          }`}
+        >
+          {colors.length} entradas
+        </button>
+      </div>
+    </div>
   )
 }

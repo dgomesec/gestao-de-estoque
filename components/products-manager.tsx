@@ -46,7 +46,8 @@ import { Plus, MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
 import { createProduct, updateProduct, deleteProduct, deleteProducts, type ProductInput } from "@/app/actions/products"
 import { ProductImport } from "@/components/product-import"
 import { ColorTag } from "@/components/color-tag"
-import { detectColor, colorFromLabel, ALL_COLORS } from "@/lib/colors"
+import { ColorPicker } from "@/components/color-picker"
+import { detectColor, colorFromLabel } from "@/lib/colors"
 import { formatBRL, formatUSD, formatPct } from "@/lib/format"
 
 type Product = {
@@ -55,6 +56,7 @@ type Product = {
   name: string
   description: string | null
   color: string | null
+  colorHex: string | null
   quantity: number
   priceUsd: string
   marginMin: string
@@ -76,6 +78,7 @@ const EMPTY: ProductInput = {
   name: "",
   description: "",
   color: "",
+  colorHex: "",
   quantity: 0,
   priceUsd: 0,
   marginMin: 0,
@@ -148,6 +151,7 @@ export function ProductsManager({
       name: p.name,
       description: p.description ?? "",
       color: p.color ?? "",
+      colorHex: p.colorHex ?? "",
       quantity: p.quantity,
       priceUsd: Number(p.priceUsd),
       marginMin: Number(p.marginMin),
@@ -382,7 +386,7 @@ export function ProductsManager({
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{p.name}</span>
-                            <ColorTag name={p.name} color={p.color} />
+                            <ColorTag name={p.name} color={p.color} hex={p.colorHex} />
                             {p.importSource && p.importSource !== "manual" && (
                               <Badge variant="outline" className="text-[10px] uppercase">
                                 {SOURCE_LABELS[p.importSource] ?? p.importSource}
@@ -478,34 +482,11 @@ export function ProductsManager({
 
             <div className="space-y-1.5">
               <Label htmlFor="color">Cor</Label>
-              <Select
-                value={form.color ? form.color : "none"}
-                onValueChange={(v) => setForm({ ...form, color: v === "none" ? "" : (v ?? "") })}
-              >
-                <SelectTrigger id="color" className="w-full">
-                  <SelectValue placeholder="Sem cor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem cor (detectar pelo nome)</SelectItem>
-                  {ALL_COLORS.map((c) => (
-                    <SelectItem key={c.label} value={c.label}>
-                      <span className="flex items-center gap-2">
-                        <span
-                          aria-hidden="true"
-                          className="size-2.5 rounded-full border border-black/10"
-                          style={{ backgroundColor: c.hex }}
-                        />
-                        {c.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!form.color && detectColor(form.name) && (
-                <p className="text-xs text-muted-foreground">
-                  Detectado pelo nome: {detectColor(form.name)?.label}. Será salvo automaticamente.
-                </p>
-              )}
+              <ColorPicker
+                value={{ label: form.color ?? "", hex: form.colorHex ?? "" }}
+                onChange={(v) => setForm({ ...form, color: v.label, colorHex: v.hex })}
+                detectedHint={!form.color && !form.colorHex ? detectColor(form.name)?.label ?? null : null}
+              />
             </div>
 
             <div className="space-y-1.5">

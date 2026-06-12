@@ -38,13 +38,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen } from "lucide-react"
+import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen, Printer, Mail, MessageCircle, BadgeCheck } from "lucide-react"
 import { registerSaleItems, convertQuote, cancelQuote, deleteSale, updateSaleCustomer, type SaleKind } from "@/app/actions/sales"
+import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
-import { distinctColors, detectColor } from "@/lib/colors"
+import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
 import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from "@/lib/format"
 
 type Sale = {
@@ -62,6 +64,11 @@ type Sale = {
   customer: string | null
   customerId: number | null
   customerName: string | null
+  customerPhone: string | null
+  customerEmail: string | null
+  groupId: string | null
+  approvalToken: string | null
+  approvedAt: Date | null
   convertedAt: Date | null
   createdAt: Date
 }
@@ -70,6 +77,8 @@ type ProductOpt = {
   id: number
   name: string
   sku: string
+  color: string | null
+  colorHex: string | null
   quantity: number
   priceUsd: string
   marginMin: string
@@ -85,6 +94,8 @@ type CartItem = {
   productId: number
   name: string
   sku: string
+  color: string | null
+  colorHex: string | null
   available: number
   costUsd: number
   marginMin: number
@@ -115,6 +126,8 @@ export function SalesManager({
   const [kind, setKind] = useState<SaleKind>("sale")
   const [cart, setCart] = useState<CartItem[]>([])
   const [search, setSearch] = useState("")
+  // Filtro por cor aplicado à busca de produtos do carrinho.
+  const [productColor, setProductColor] = useState<string>("all")
   const [searchFocused, setSearchFocused] = useState(false)
   const [useManualRate, setUseManualRate] = useState(false)
   const [manualRate, setManualRate] = useState(rate)
@@ -159,21 +172,47 @@ export function SalesManager({
     })
   }, [sales, filter, listQuery, listColor])
 
+  // Cor "efetiva" de um produto: usa a cor persistida (primeiro rótulo, caso
+  // haja variações) e, na ausência dela, detecta a partir do nome.
+  function productColorLabel(p: ProductOpt): string | null {
+    const stored = p.color?.split(",")[0]?.trim()
+    if (stored) return stored
+    return detectColor(p.name)?.label ?? null
+  }
+
+  // Cores distintas dos produtos disponíveis (para o filtro da busca no carrinho).
+  const productColorOptions = useMemo(() => {
+    const map = new Map<string, { label: string; hex: string }>()
+    for (const p of products) {
+      const label = productColorLabel(p)
+      if (label && !map.has(label)) {
+        const hex = colorFromLabel(label)?.hex ?? detectColor(p.name)?.hex ?? "#9ca3af"
+        map.set(label, { label, hex })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
+  }, [products])
+
   // Resultados da busca por nome ou SKU (somente produtos com estoque e ainda não no carrinho).
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase()
     const inCart = new Set(cart.map((c) => c.productId))
-    const base = products.filter((p) => p.quantity > 0 && !inCart.has(p.id))
+    const base = products.filter((p) => {
+      if (p.quantity <= 0 || inCart.has(p.id)) return false
+      if (productColor !== "all" && productColorLabel(p) !== productColor) return false
+      return true
+    })
     if (!q) return base.slice(0, 8)
     return base
       .filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
       .slice(0, 8)
-  }, [search, products, cart])
+  }, [search, products, cart, productColor])
 
   function openDialog() {
     setKind("sale")
     setCart([])
     setSearch("")
+    setProductColor("all")
     setUseManualRate(false)
     setManualRate(rate)
     setCustomerId(NO_CUSTOMER)
@@ -192,6 +231,8 @@ export function SalesManager({
         productId: p.id,
         name: p.name,
         sku: p.sku,
+        color: p.color,
+        colorHex: p.colorHex,
         available: p.quantity,
         costUsd: cost,
         marginMin: min,
@@ -341,6 +382,52 @@ export function SalesManager({
     })
   }
 
+  // Abre o recibo/pedido em uma nova aba (página imprimível por groupId).
+  function openReceipt(s: Sale) {
+    if (!s.groupId) {
+      toast.error("Recibo indisponível para este registro.")
+      return
+    }
+    window.open(`/recibo/${s.groupId}`, "_blank", "noopener,noreferrer")
+  }
+
+  // Envia o recibo/orçamento por e-mail ao cliente via Resend.
+  function handleSendEmail(s: Sale) {
+    if (!s.groupId) {
+      toast.error("Pedido sem identificador de grupo.")
+      return
+    }
+    if (!s.customerEmail) {
+      toast.error("O cliente não possui e-mail cadastrado. Edite o cliente para incluir um e-mail.")
+      return
+    }
+    startTransition(async () => {
+      const res = await sendOrderEmail(s.groupId!)
+      if (res.ok) toast.success(`E-mail enviado para ${res.email}`)
+      else toast.error(res.error)
+    })
+  }
+
+  // Inicia uma conversa no WhatsApp com o cliente, já com a mensagem do pedido.
+  function openWhatsApp(s: Sale) {
+    const phone = (s.customerPhone ?? "").replace(/\D/g, "")
+    if (!phone) {
+      toast.error("O cliente não possui telefone cadastrado.")
+      return
+    }
+    // Adiciona o DDI do Brasil (55) quando o número não o inclui.
+    const fullPhone = phone.length <= 11 ? `55${phone}` : phone
+    const code = formatSaleCode(s.kind, s.id)
+    const name = s.customerName ?? s.customer ?? "cliente"
+    const message =
+      `Olá, ${name}! Tudo bem? ` +
+      `Aqui é da ${"Gestão de Estoque"}. ` +
+      `Recebemos a aprovação do seu orçamento ${code} e vamos dar sequência ao seu atendimento. ` +
+      `Podemos confirmar os detalhes do pedido?`
+    const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`
+    window.open(url, "_blank", "noopener,noreferrer")
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -431,10 +518,18 @@ export function SalesManager({
                           {formatDateTime(s.createdAt)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={isQuote ? "outline" : "secondary"} className="gap-1">
-                            {isQuote ? <FileText className="size-3" /> : <CheckCircle2 className="size-3" />}
-                            {isQuote ? "Orçamento" : "Venda"}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant={isQuote ? "outline" : "secondary"} className="gap-1">
+                              {isQuote ? <FileText className="size-3" /> : <CheckCircle2 className="size-3" />}
+                              {isQuote ? "Orçamento" : "Venda"}
+                            </Badge>
+                            {isQuote && s.approvedAt && (
+                              <Badge className="gap-1 bg-chart-2 text-white hover:bg-chart-2">
+                                <BadgeCheck className="size-3" />
+                                Aprovado
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -461,49 +556,62 @@ export function SalesManager({
                           {formatBRL(Number(s.profitBrl))}
                         </TableCell>
                         <TableCell>
-                          {(perms.update || perms.delete) && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button variant="ghost" size="icon" aria-label="Ações">
-                                    <MoreHorizontal className="size-4" />
-                                  </Button>
-                                }
-                              />
-                              <DropdownMenuContent align="end">
-                                {perms.update && (
-                                  <DropdownMenuItem onClick={() => openEditCustomer(s)}>
-                                    <UserPen className="mr-2 size-4" />
-                                    Editar cliente
-                                  </DropdownMenuItem>
-                                )}
-                                {isQuote && perms.update && (
-                                  <DropdownMenuItem onClick={() => handleConvert(s)}>
-                                    <CheckCircle2 className="mr-2 size-4" />
-                                    Converter em venda
-                                  </DropdownMenuItem>
-                                )}
-                                {isQuote && perms.delete && (
-                                  <DropdownMenuItem
-                                    onClick={() => handleCancel(s)}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <XCircle className="mr-2 size-4" />
-                                    Cancelar orçamento
-                                  </DropdownMenuItem>
-                                )}
-                                {!isQuote && perms.delete && (
-                                  <DropdownMenuItem
-                                    onClick={() => handleDelete(s)}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <Trash2 className="mr-2 size-4" />
-                                    Excluir venda
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button variant="ghost" size="icon" aria-label="Ações">
+                                  <MoreHorizontal className="size-4" />
+                                </Button>
+                              }
+                            />
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openReceipt(s)}>
+                                <Printer className="mr-2 size-4" />
+                                Ver / imprimir recibo
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSendEmail(s)} disabled={isPending}>
+                                <Mail className="mr-2 size-4" />
+                                Enviar por e-mail
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openWhatsApp(s)}>
+                                <MessageCircle className="mr-2 size-4" />
+                                Enviar pelo WhatsApp
+                              </DropdownMenuItem>
+
+                              {(perms.update || perms.delete) && <DropdownMenuSeparator />}
+
+                              {perms.update && (
+                                <DropdownMenuItem onClick={() => openEditCustomer(s)}>
+                                  <UserPen className="mr-2 size-4" />
+                                  Editar cliente
+                                </DropdownMenuItem>
+                              )}
+                              {isQuote && perms.update && (
+                                <DropdownMenuItem onClick={() => handleConvert(s)}>
+                                  <CheckCircle2 className="mr-2 size-4" />
+                                  Converter em venda
+                                </DropdownMenuItem>
+                              )}
+                              {isQuote && perms.delete && (
+                                <DropdownMenuItem
+                                  onClick={() => handleCancel(s)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <XCircle className="mr-2 size-4" />
+                                  Cancelar orçamento
+                                </DropdownMenuItem>
+                              )}
+                              {!isQuote && perms.delete && (
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(s)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 size-4" />
+                                  Excluir venda
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     )
@@ -535,26 +643,27 @@ export function SalesManager({
             {/* Busca por digitação (nome ou SKU) com resultados em dropdown. */}
             <div className="space-y-1.5">
               <Label htmlFor="product-search">Adicionar produto</Label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  id="product-search"
-                  className="pl-9"
-                  placeholder="Digite o nome ou SKU do produto..."
-                  value={search}
-                  autoComplete="off"
-                  onChange={(e) => setSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => {
-                    blurTimeout.current = setTimeout(() => setSearchFocused(false), 150)
-                  }}
-                />
-                {searchFocused && searchResults.length > 0 && (
-                  <ul
-                    className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
-                    role="listbox"
-                  >
-                    {searchResults.map((p) => (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    id="product-search"
+                    className="pl-9"
+                    placeholder="Digite o nome ou SKU do produto..."
+                    value={search}
+                    autoComplete="off"
+                    onChange={(e) => setSearch(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => {
+                      blurTimeout.current = setTimeout(() => setSearchFocused(false), 150)
+                    }}
+                  />
+                  {searchFocused && searchResults.length > 0 && (
+                    <ul
+                      className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
+                      role="listbox"
+                    >
+                      {searchResults.map((p) => (
                       <li key={p.id}>
                         <button
                           type="button"
@@ -569,7 +678,7 @@ export function SalesManager({
                             <span className="block truncate font-medium">{p.name}</span>
                             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <span className="truncate">SKU {p.sku} · {formatUSD(Number(p.priceUsd))}/un</span>
-                              <ColorTag name={p.name} className="border-transparent px-0 py-0" showLabel={false} />
+                              <ColorTag name={p.name} color={p.color} hex={p.colorHex} className="border-transparent px-0 py-0" showLabel={false} />
                             </span>
                           </span>
                           <Badge variant="secondary" className="shrink-0">
@@ -580,10 +689,33 @@ export function SalesManager({
                     ))}
                   </ul>
                 )}
-                {searchFocused && search.trim() && searchResults.length === 0 && (
-                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-3 text-sm text-muted-foreground shadow-md">
-                    Nenhum produto encontrado.
-                  </div>
+                  {searchFocused && search.trim() && searchResults.length === 0 && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-3 text-sm text-muted-foreground shadow-md">
+                      Nenhum produto encontrado.
+                    </div>
+                  )}
+                </div>
+                {productColorOptions.length > 0 && (
+                  <Select value={productColor} onValueChange={(v) => setProductColor(v ?? "all")}>
+                    <SelectTrigger className="w-full sm:w-44" aria-label="Filtrar produtos por cor">
+                      <SelectValue placeholder="Cor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as cores</SelectItem>
+                      {productColorOptions.map((c) => (
+                        <SelectItem key={c.label} value={c.label}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              aria-hidden="true"
+                              className="size-2.5 rounded-full border border-black/10"
+                              style={{ backgroundColor: c.hex }}
+                            />
+                            {c.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             </div>
@@ -609,7 +741,7 @@ export function SalesManager({
                         <div className="min-w-0">
                           <p className="flex items-center gap-2 truncate font-medium">
                             <span className="truncate">{item.name}</span>
-                            <ColorTag name={item.name} className="border-transparent px-0 py-0" showLabel={false} />
+                            <ColorTag name={item.name} color={item.color} hex={item.colorHex} className="border-transparent px-0 py-0" showLabel={false} />
                           </p>
                           <p className="truncate text-xs text-muted-foreground">
                             SKU {item.sku} · custo {formatUSD(item.costUsd)} · {item.available} disp.

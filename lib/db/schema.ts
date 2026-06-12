@@ -106,6 +106,10 @@ export const products = pgTable("products", {
   // Cor do produto. Para um único produto, o rótulo em português (ex.: "Azul").
   // Para variações, uma lista separada por vírgula (ex.: "Azul, Preto").
   color: text("color"),
+  // Cor exata em HEX (ex.: "#3b82f6"), quando definida manualmente pelo usuário.
+  // Complementa o rótulo: o rótulo serve para agrupar/filtrar, o HEX para exibir
+  // a tonalidade exata escolhida.
+  colorHex: text("colorHex"),
   quantity: integer("quantity").notNull().default(0),
   // All monetary values entered in USD.
   priceUsd: numeric("priceUsd", { precision: 12, scale: 2 }).notNull(),
@@ -155,6 +159,13 @@ export const sales = pgTable("sales", {
   customer: text("customer"),
   customerId: integer("customerId"),
   soldBy: text("soldBy").notNull(),
+  // Agrupa todas as linhas de um mesmo pedido (venda/orçamento com vários itens).
+  // Permite gerar um único recibo e um único link de aprovação por pedido.
+  groupId: text("groupId"),
+  // Token público (aleatório) usado no link de aprovação do orçamento.
+  approvalToken: text("approvalToken"),
+  // Quando o cliente aprovou o orçamento pelo link público.
+  approvedAt: timestamp("approvedAt"),
   // Quando um orçamento foi convertido em venda.
   convertedAt: timestamp("convertedAt"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),

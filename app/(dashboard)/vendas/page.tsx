@@ -31,6 +31,8 @@ export default async function SalesPage() {
           id: p.id,
           name: p.name,
           sku: p.sku,
+          color: p.color,
+          colorHex: p.colorHex,
           quantity: p.quantity,
           priceUsd: p.priceUsd,
           marginMin: p.marginMin,
