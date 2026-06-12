@@ -114,6 +114,7 @@ export function SalesManager({
   rate,
   protectionPct,
   perms,
+  storeName,
 }: {
   sales: Sale[]
   products: ProductOpt[]
@@ -121,6 +122,7 @@ export function SalesManager({
   rate: number
   protectionPct: number
   perms: Perms
+  storeName: string | null
 }) {
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<SaleKind>("sale")
@@ -421,9 +423,10 @@ export function SalesManager({
     const fullPhone = phone.length <= 11 ? `55${phone}` : phone
     const code = formatSaleCode(s.kind, s.id)
     const name = s.customerName ?? s.customer ?? "cliente"
+    const greeting = storeName?.trim() ? `Aqui é da ${storeName.trim()}. ` : ""
     const message =
       `Olá, ${name}! Tudo bem? ` +
-      `Aqui é da ${"Gestão de Estoque"}. ` +
+      greeting +
       `Recebemos a aprovação do seu orçamento ${code} e vamos dar sequência ao seu atendimento. ` +
       `Podemos confirmar os detalhes do pedido?`
     const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`

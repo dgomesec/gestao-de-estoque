@@ -41,6 +41,7 @@ export default async function SalesPage() {
         customers={customers}
         rate={settings.exchangeRate}
         protectionPct={settings.currencyProtectionPct}
+        storeName={settings.storeName}
         perms={{
           create: hasPermission(ctx, "sales", "create"),
           update: hasPermission(ctx, "sales", "update"),
