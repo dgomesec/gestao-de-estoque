@@ -3,12 +3,16 @@
 import { Resend } from 'resend'
 import { requirePermission } from '@/lib/rbac'
 import { getOrderByGroupId, getBaseUrl, type Order } from '@/lib/orders'
-import { formatBRL, formatUSD, formatDateTime } from '@/lib/format'
+import { formatBRL, formatDateTime } from '@/lib/format'
 import { logAudit } from '@/lib/audit'
 
 // Remetente: usa um domínio verificado no Resend se configurado, senão o
 // sandbox oficial (onboarding@resend.dev), que funciona para testes.
-const FROM = process.env.RESEND_FROM_EMAIL || 'Gestão de Estoque <onboarding@resend.dev>'
+function buildFrom(storeName: string): string {
+  if (process.env.RESEND_FROM_EMAIL) return process.env.RESEND_FROM_EMAIL
+  const safeName = storeName.replace(/[<>"]/g, '').trim() || 'Recibos'
+  return `${safeName} <onboarding@resend.dev>`
+}
 
 /**
  * Envia por e-mail o recibo (venda) ou o orçamento (com link de aprovação) ao
@@ -34,14 +38,14 @@ export async function sendOrderEmail(groupId: string) {
   const receiptUrl = `${base}/recibo/${order.groupId}`
 
   const subject = isQuote
-    ? `Seu orçamento - ${order.storeName}`
-    : `Seu recibo de compra - ${order.storeName}`
+    ? `Seu orçamento - ${order.store.name}`
+    : `Seu recibo de compra - ${order.store.name}`
 
   const html = buildHtml(order, { isQuote, approvalUrl, receiptUrl })
 
   const resend = new Resend(apiKey)
   const { error } = await resend.emails.send({
-    from: FROM,
+    from: buildFrom(order.store.name),
     to: order.customer.email,
     subject,
     html,
@@ -67,18 +71,19 @@ function buildHtml(
 ): string {
   const { isQuote, approvalUrl, receiptUrl } = opts
   const rows = order.items
-    .map(
-      (it) => `
+    .map((it) => {
+      const unitBrl = it.quantity > 0 ? Number(it.totalBrl) / it.quantity : Number(it.totalBrl)
+      return `
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #eee;">
           <strong>${escapeHtml(it.productName ?? 'Produto')}</strong>
           ${it.sku ? `<br/><span style="color:#888;font-size:12px;">${escapeHtml(it.sku)}</span>` : ''}
         </td>
         <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;color:#666;">${formatUSD(Number(it.unitPriceUsd))}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;color:#666;">${formatBRL(unitBrl)}</td>
         <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;"><strong>${formatBRL(Number(it.totalBrl))}</strong></td>
-      </tr>`,
-    )
+      </tr>`
+    })
     .join('')
 
   const approveBlock =
@@ -92,10 +97,22 @@ function buildHtml(
       </div>`
       : ''
 
+  const store = order.store
+  const storeContact = [store.address, store.phone, store.email]
+    .filter(Boolean)
+    .map((v) => escapeHtml(String(v)))
+    .join(' · ')
+
   return `
   <div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;color:#111;">
     <div style="padding:24px 0;border-bottom:2px solid #111;">
-      <h1 style="margin:0;font-size:20px;">${escapeHtml(order.storeName)}</h1>
+      ${
+        store.logoUrl
+          ? `<img src="${escapeHtml(store.logoUrl)}" alt="${escapeHtml(store.name)}" style="max-height:56px;max-width:160px;object-fit:contain;margin-bottom:8px;" />`
+          : ''
+      }
+      <h1 style="margin:0;font-size:20px;">${escapeHtml(store.name)}</h1>
+      ${storeContact ? `<p style="margin:4px 0 0;color:#888;font-size:12px;">${storeContact}</p>` : ''}
       <p style="margin:4px 0 0;color:#666;font-size:14px;">${isQuote ? 'Orçamento' : 'Recibo de venda'} · ${formatDateTime(order.createdAt)}</p>
     </div>
 
@@ -113,8 +130,8 @@ function buildHtml(
         <tr style="text-align:left;color:#888;">
           <th style="padding:8px 0;border-bottom:1px solid #ddd;">Produto</th>
           <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:center;">Qtd</th>
-          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Unitário</th>
-          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Total</th>
+          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Unitário (R$)</th>
+          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Total (R$)</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>

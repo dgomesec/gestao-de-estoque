@@ -1,18 +1,33 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { RefreshCw, Save } from "lucide-react"
-import { updateSettings, refreshLiveRate } from "@/app/actions/settings"
+import { RefreshCw, Save, Upload, Trash2, Store } from "lucide-react"
+import {
+  updateSettings,
+  refreshLiveRate,
+  updateStoreInfo,
+  uploadStoreLogo,
+  removeStoreLogo,
+} from "@/app/actions/settings"
 import { formatBRL, formatDateTime, formatPct } from "@/lib/format"
+
+type StoreFields = {
+  storeName: string | null
+  storeLogoUrl: string | null
+  storeAddress: string | null
+  storePhone: string | null
+  storeEmail: string | null
+}
 
 export function SettingsManager({
   initial,
+  store,
   canEdit,
 }: {
   initial: {
@@ -21,6 +36,7 @@ export function SettingsManager({
     currencyProtectionPct: number
     rateUpdatedAt: Date
   }
+  store: StoreFields
   canEdit: boolean
 }) {
   const [rate, setRate] = useState(initial.exchangeRate)
@@ -28,6 +44,58 @@ export function SettingsManager({
   const [protection, setProtection] = useState(initial.currencyProtectionPct)
   const [updatedAt, setUpdatedAt] = useState(initial.rateUpdatedAt)
   const [isPending, startTransition] = useTransition()
+
+  // Estado dos dados da loja.
+  const [storeName, setStoreName] = useState(store.storeName ?? "")
+  const [storeAddress, setStoreAddress] = useState(store.storeAddress ?? "")
+  const [storePhone, setStorePhone] = useState(store.storePhone ?? "")
+  const [storeEmail, setStoreEmail] = useState(store.storeEmail ?? "")
+  const [logoUrl, setLogoUrl] = useState(store.storeLogoUrl)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function saveStore() {
+    startTransition(async () => {
+      try {
+        await updateStoreInfo({ storeName, storeAddress, storePhone, storeEmail })
+        toast.success("Dados da loja salvos")
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar dados da loja")
+      }
+    })
+  }
+
+  function onLogoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.append("logo", file)
+    setUploading(true)
+    startTransition(async () => {
+      try {
+        const res = await uploadStoreLogo(formData)
+        setLogoUrl(res.url)
+        toast.success("Logo atualizado")
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao enviar logo")
+      } finally {
+        setUploading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ""
+      }
+    })
+  }
+
+  function removeLogo() {
+    startTransition(async () => {
+      try {
+        await removeStoreLogo()
+        setLogoUrl(null)
+        toast.success("Logo removido")
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao remover logo")
+      }
+    })
+  }
 
   function save() {
     if (rate <= 0) {
@@ -68,6 +136,123 @@ export function SettingsManager({
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Store className="size-5" aria-hidden="true" />
+              Dados da loja
+            </CardTitle>
+            <CardDescription>
+              Essas informações aparecem nos recibos e orçamentos enviados aos clientes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+                {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={logoUrl || "/placeholder.svg"}
+                    alt="Logo da loja"
+                    className="size-full object-contain"
+                  />
+                ) : (
+                  <Store className="size-8 text-muted-foreground" aria-hidden="true" />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Logo da empresa</Label>
+                <p className="text-sm text-muted-foreground">PNG, JPG ou SVG até 2 MB.</p>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onLogoSelected}
+                    disabled={!canEdit || uploading}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={!canEdit || uploading || isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="size-4" aria-hidden="true" />
+                    {uploading ? "Enviando..." : logoUrl ? "Trocar logo" : "Enviar logo"}
+                  </Button>
+                  {logoUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-2 text-destructive hover:text-destructive"
+                      disabled={!canEdit || isPending}
+                      onClick={removeLogo}
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                      Remover
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="storeName">Nome da loja</Label>
+                <Input
+                  id="storeName"
+                  value={storeName}
+                  disabled={!canEdit}
+                  placeholder="Ex.: Minha Loja Ltda."
+                  onChange={(e) => setStoreName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="storeAddress">Endereço</Label>
+                <Input
+                  id="storeAddress"
+                  value={storeAddress}
+                  disabled={!canEdit}
+                  placeholder="Rua, número, bairro, cidade - UF"
+                  onChange={(e) => setStoreAddress(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="storePhone">Telefone</Label>
+                <Input
+                  id="storePhone"
+                  value={storePhone}
+                  disabled={!canEdit}
+                  placeholder="(00) 00000-0000"
+                  onChange={(e) => setStorePhone(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="storeEmail">E-mail</Label>
+                <Input
+                  id="storeEmail"
+                  type="email"
+                  value={storeEmail}
+                  disabled={!canEdit}
+                  placeholder="contato@minhaloja.com.br"
+                  onChange={(e) => setStoreEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {canEdit && (
+              <Button onClick={saveStore} disabled={isPending} className="gap-2">
+                <Save className="size-4" aria-hidden="true" />
+                {isPending ? "Salvando..." : "Salvar dados da loja"}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Cotação do dólar (USD → BRL)</CardTitle>

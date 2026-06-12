@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { sales, products, customers } from "@/lib/db/schema"
 import { eq, asc } from "drizzle-orm"
+import { getSettings } from "@/lib/exchange"
 
 /**
  * Representa um "pedido" completo: todas as linhas de `sales` que compartilham o
@@ -34,10 +35,15 @@ export type Order = {
   items: OrderItem[]
   totalUsd: number
   totalBrl: number
-  storeName: string
+  // Dados da loja exibidos no recibo/orçamento (vindos das configurações).
+  store: {
+    name: string
+    logoUrl: string | null
+    address: string | null
+    phone: string | null
+    email: string | null
+  }
 }
-
-const STORE_NAME = "Gestão de Estoque"
 
 function mapRows(
   rows: {
@@ -49,6 +55,7 @@ function mapRows(
     customerEmail: string | null
     customerDocument: string | null
   }[],
+  store: Order["store"],
 ): Order | null {
   if (rows.length === 0) return null
   const first = rows[0].sale
@@ -85,7 +92,7 @@ function mapRows(
     items,
     totalUsd,
     totalBrl,
-    storeName: STORE_NAME,
+    store,
   }
 }
 
@@ -106,7 +113,16 @@ async function queryByColumn(column: "groupId" | "approvalToken", value: string)
     .where(eq(sales[column], value))
     .orderBy(asc(sales.id))
 
-  return mapRows(rows)
+  const settings = await getSettings()
+  const store: Order["store"] = {
+    name: settings.storeName?.trim() || "Sua Loja",
+    logoUrl: settings.storeLogoUrl,
+    address: settings.storeAddress,
+    phone: settings.storePhone,
+    email: settings.storeEmail,
+  }
+
+  return mapRows(rows, store)
 }
 
 /** Busca um pedido completo pelo identificador de grupo. */

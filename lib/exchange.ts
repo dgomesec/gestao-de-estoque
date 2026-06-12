@@ -4,6 +4,14 @@ import { db } from '@/lib/db'
 import { settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 
+export type StoreInfo = {
+  storeName: string | null
+  storeLogoUrl: string | null
+  storeAddress: string | null
+  storePhone: string | null
+  storeEmail: string | null
+}
+
 export type Settings = {
   exchangeRate: number
   manualRate: boolean
@@ -11,7 +19,7 @@ export type Settings = {
   rateUpdatedAt: Date
   rateSource: string | null
   rateCheckedAt: Date | null
-}
+} & StoreInfo
 
 // Minimum interval between live API checks (6 hours) to avoid rate limits (429).
 const RATE_TTL_MS = 6 * 60 * 60 * 1000
@@ -79,6 +87,11 @@ export async function getSettings(): Promise<Settings> {
       rateUpdatedAt: new Date(),
       rateSource: null,
       rateCheckedAt: null,
+      storeName: null,
+      storeLogoUrl: null,
+      storeAddress: null,
+      storePhone: null,
+      storeEmail: null,
     }
   }
   return {
@@ -88,6 +101,11 @@ export async function getSettings(): Promise<Settings> {
     rateUpdatedAt: row.rateUpdatedAt,
     rateSource: row.rateSource ?? null,
     rateCheckedAt: row.rateCheckedAt ?? null,
+    storeName: row.storeName ?? null,
+    storeLogoUrl: row.storeLogoUrl ?? null,
+    storeAddress: row.storeAddress ?? null,
+    storePhone: row.storePhone ?? null,
+    storeEmail: row.storeEmail ?? null,
   }
 }
 
