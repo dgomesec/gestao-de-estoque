@@ -280,6 +280,54 @@ export async function registerSaleItems(input: RegisterItemsInput) {
 }
 
 /**
+ * Atualiza o cliente vinculado a uma venda/orçamento já registrado. Permite
+ * corrigir quando alguém esqueceu de vincular o cliente no momento do registro.
+ * Aceita um cliente cadastrado (customerId) ou um nome avulso (customer).
+ */
+export async function updateSaleCustomer(
+  id: number,
+  input: { customerId?: number | null; customer?: string | null },
+) {
+  const ctx = await requirePermission('sales', 'update')
+
+  const [sale] = await db.select().from(sales).where(eq(sales.id, id))
+  if (!sale) throw new Error('Registro não encontrado')
+
+  const customerId = input.customerId ?? null
+  // Quando vincula um cliente cadastrado, limpamos o texto avulso para evitar
+  // ambiguidade; caso contrário usamos o texto informado.
+  const customerText = customerId ? null : input.customer?.trim() || null
+
+  let customerLabel = 'avulso/sem cliente'
+  if (customerId) {
+    const [c] = await db.select().from(customers).where(eq(customers.id, customerId))
+    customerLabel = c?.name ?? `#${customerId}`
+  } else if (customerText) {
+    customerLabel = customerText
+  }
+
+  await db
+    .update(sales)
+    .set({ customerId, customer: customerText })
+    .where(eq(sales.id, id))
+
+  await logAudit({
+    action: 'update',
+    resource: 'sales',
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    resourceId: id,
+    summary: `Cliente do registro #${id} atualizado para "${customerLabel}"`,
+  })
+
+  revalidatePath('/vendas')
+  revalidatePath('/clientes')
+  revalidatePath('/dashboard')
+  revalidatePath('/relatorios')
+}
+
+/**
  * Converte um orçamento em venda finalizada. O estoque já está reservado,
  * então não há nova baixa.
  */
