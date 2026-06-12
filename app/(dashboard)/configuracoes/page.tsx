@@ -17,7 +17,17 @@ export default async function SettingsPage() {
         title="Configurações"
         description="Cotação do dólar e proteção cambial usadas em todo o sistema."
       />
-      <SettingsManager initial={settings} canEdit={hasPermission(ctx, "settings", "update")} />
+      <SettingsManager
+        initial={settings}
+        store={{
+          storeName: settings.storeName,
+          storeLogoUrl: settings.storeLogoUrl,
+          storeAddress: settings.storeAddress,
+          storePhone: settings.storePhone,
+          storeEmail: settings.storeEmail,
+        }}
+        canEdit={hasPermission(ctx, "settings", "update")}
+      />
     </>
   )
 }

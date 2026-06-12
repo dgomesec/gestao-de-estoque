@@ -214,6 +214,12 @@ export const settings = pgTable("settings", {
   rateSource: text("rateSource"),
   // Timestamp of the last *attempt* to refresh the rate (success or failure).
   rateCheckedAt: timestamp("rateCheckedAt"),
+  // --- Dados da loja (exibidos nos recibos e orçamentos) ---
+  storeName: text("storeName"),
+  storeLogoUrl: text("storeLogoUrl"),
+  storeAddress: text("storeAddress"),
+  storePhone: text("storePhone"),
+  storeEmail: text("storeEmail"),
 })
 
 // --- Audit & monitoring -----------------------------------------------------
