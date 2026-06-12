@@ -461,6 +461,154 @@ export async function cancelQuote(id: number) {
 }
 
 /**
+ * Exclui um pedido inteiro (todas as linhas de um mesmo groupId), devolvendo o
+ * estoque de cada item. Funciona tanto para vendas quanto para orçamentos —
+ * unificando "cancelar orçamento" e "excluir venda" em uma única operação por
+ * pedido. Retorna o total de itens removidos.
+ */
+export async function deleteOrder(groupId: string) {
+  const ctx = await requirePermission('sales', 'delete')
+  if (!groupId) throw new Error('Pedido inválido')
+
+  const rows = await db.select().from(sales).where(eq(sales.groupId, groupId))
+  if (rows.length === 0) throw new Error('Pedido não encontrado')
+
+  const kind = rows[0].kind
+
+  for (const row of rows) {
+    // Devolve o estoque baixado/reservado por cada item.
+    await db
+      .update(products)
+      .set({ quantity: sql`${products.quantity} + ${row.quantity}`, updatedAt: new Date() })
+      .where(eq(products.id, row.productId))
+
+    await db.insert(stockMovements).values({
+      productId: row.productId,
+      type: 'in',
+      quantity: row.quantity,
+      note: kind === 'quote' ? `Cancelamento orçamento #${row.id}` : `Estorno venda #${row.id}`,
+      createdBy: ctx.user.id,
+    })
+  }
+
+  await db.delete(sales).where(eq(sales.groupId, groupId))
+
+  await logAudit({
+    action: 'delete',
+    resource: 'sales',
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `${kind === 'quote' ? 'Orçamento' : 'Venda'} (pedido ${groupId}) excluído com ${rows.length} item(ns) — estoque devolvido`,
+    metadata: { groupId, kind, saleIds: rows.map((r) => r.id) },
+  })
+
+  revalidatePath('/vendas')
+  revalidatePath('/produtos')
+  revalidatePath('/estoque')
+  revalidatePath('/dashboard')
+  revalidatePath('/relatorios')
+  return { count: rows.length }
+}
+
+/**
+ * Exclui vários pedidos de uma só vez (exclusão em massa). Recebe uma lista de
+ * groupIds e processa cada um, devolvendo o estoque correspondente.
+ */
+export async function deleteOrders(groupIds: string[]) {
+  await requirePermission('sales', 'delete')
+  const unique = Array.from(new Set((groupIds ?? []).filter(Boolean)))
+  if (unique.length === 0) throw new Error('Nenhum pedido selecionado')
+
+  let deleted = 0
+  for (const g of unique) {
+    const res = await deleteOrder(g)
+    deleted += res.count
+  }
+  return { orders: unique.length, items: deleted }
+}
+
+/**
+ * Converte um pedido de orçamento inteiro (todas as linhas do groupId) em venda.
+ * O estoque já está reservado, então não há nova baixa.
+ */
+export async function convertOrder(groupId: string) {
+  const ctx = await requirePermission('sales', 'update')
+  if (!groupId) throw new Error('Pedido inválido')
+
+  const rows = await db.select().from(sales).where(eq(sales.groupId, groupId))
+  if (rows.length === 0) throw new Error('Orçamento não encontrado')
+  if (rows.some((r) => r.kind !== 'quote')) {
+    throw new Error('Este pedido não é um orçamento')
+  }
+
+  await db
+    .update(sales)
+    .set({ kind: 'sale', convertedAt: new Date() })
+    .where(eq(sales.groupId, groupId))
+
+  await logAudit({
+    action: 'update',
+    resource: 'sales',
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Orçamento (pedido ${groupId}) convertido em venda`,
+    metadata: { groupId, saleIds: rows.map((r) => r.id) },
+  })
+
+  revalidatePath('/vendas')
+  revalidatePath('/dashboard')
+  revalidatePath('/relatorios')
+  return { count: rows.length }
+}
+
+/**
+ * Atualiza o cliente de um pedido inteiro (todas as linhas do groupId).
+ */
+export async function updateOrderCustomer(
+  groupId: string,
+  input: { customerId?: number | null; customer?: string | null },
+) {
+  const ctx = await requirePermission('sales', 'update')
+  if (!groupId) throw new Error('Pedido inválido')
+
+  const rows = await db.select().from(sales).where(eq(sales.groupId, groupId))
+  if (rows.length === 0) throw new Error('Pedido não encontrado')
+
+  const customerId = input.customerId ?? null
+  const customerText = customerId ? null : input.customer?.trim() || null
+
+  let customerLabel = 'avulso/sem cliente'
+  if (customerId) {
+    const [c] = await db.select().from(customers).where(eq(customers.id, customerId))
+    customerLabel = c?.name ?? `#${customerId}`
+  } else if (customerText) {
+    customerLabel = customerText
+  }
+
+  await db
+    .update(sales)
+    .set({ customerId, customer: customerText })
+    .where(eq(sales.groupId, groupId))
+
+  await logAudit({
+    action: 'update',
+    resource: 'sales',
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Cliente do pedido ${groupId} atualizado para "${customerLabel}"`,
+    metadata: { groupId },
+  })
+
+  revalidatePath('/vendas')
+  revalidatePath('/clientes')
+  revalidatePath('/dashboard')
+  revalidatePath('/relatorios')
+}
+
+/**
  * Aprova um orçamento a partir do token público (link enviado ao cliente).
  * NÃO exige autenticação: é a ação que o próprio cliente executa. Apenas marca
  * o orçamento como aprovado (approvedAt) — o vendedor decide quando converter
