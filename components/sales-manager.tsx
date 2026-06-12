@@ -507,6 +507,105 @@ export function SalesManager({
     })
   }
 
+  // Ações de um registro (botão WhatsApp quando aprovado + menu suspenso).
+  // Reutilizado na tabela (desktop) e nos cards (mobile).
+  function renderActions(s: Sale) {
+    const isQuote = s.kind === "quote"
+    return (
+      <div className="flex items-center justify-end gap-1">
+        {isQuote && s.approvedAt && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-chart-2 hover:text-chart-2"
+            aria-label="Contato por WhatsApp"
+            title="Falar com o cliente no WhatsApp"
+            onClick={() => openWhatsApp(s)}
+          >
+            <MessageCircle className="size-4" />
+          </Button>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="ghost" size="icon" aria-label="Ações">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => openReceipt(s)}>
+              <Printer className="mr-2 size-4" />
+              Ver / imprimir recibo
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleSendEmail(s)} disabled={isPending}>
+              <Mail className="mr-2 size-4" />
+              {isQuote ? "Enviar para aprovação" : "Enviar por e-mail"}
+            </DropdownMenuItem>
+            {isQuote && s.approvedAt && (
+              <DropdownMenuItem onClick={() => openWhatsApp(s)}>
+                <MessageCircle className="mr-2 size-4" />
+                Falar no WhatsApp
+              </DropdownMenuItem>
+            )}
+
+            {(perms.update || perms.delete) && <DropdownMenuSeparator />}
+
+            {perms.update && (
+              <DropdownMenuItem onClick={() => openEditCustomer(s)}>
+                <UserPen className="mr-2 size-4" />
+                Editar cliente
+              </DropdownMenuItem>
+            )}
+            {isQuote && perms.update && (
+              <DropdownMenuItem onClick={() => handleConvert(s)}>
+                <CheckCircle2 className="mr-2 size-4" />
+                Converter em venda
+              </DropdownMenuItem>
+            )}
+            {isQuote && perms.delete && (
+              <DropdownMenuItem
+                onClick={() => handleCancel(s)}
+                className="text-destructive focus:text-destructive"
+              >
+                <XCircle className="mr-2 size-4" />
+                Cancelar orçamento
+              </DropdownMenuItem>
+            )}
+            {!isQuote && perms.delete && (
+              <DropdownMenuItem
+                onClick={() => handleDelete(s)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 size-4" />
+                Excluir venda
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    )
+  }
+
+  // Selo de tipo (Orçamento/Venda) + selo "Aprovado". Reutilizado na tabela e cards.
+  function renderTypeBadges(s: Sale) {
+    const isQuote = s.kind === "quote"
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        <Badge variant={isQuote ? "outline" : "secondary"} className="gap-1">
+          {isQuote ? <FileText className="size-3" /> : <CheckCircle2 className="size-3" />}
+          {isQuote ? "Orçamento" : "Venda"}
+        </Badge>
+        {isQuote && s.approvedAt && (
+          <Badge className="gap-1 bg-chart-2 text-white hover:bg-chart-2">
+            <BadgeCheck className="size-3" />
+            Aprovado
+          </Badge>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -582,7 +681,7 @@ export function SalesManager({
               </div>
             </div>
           )}
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -640,18 +739,7 @@ export function SalesManager({
                           {formatDateTime(s.createdAt)}
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col items-start gap-1">
-                            <Badge variant={isQuote ? "outline" : "secondary"} className="gap-1">
-                              {isQuote ? <FileText className="size-3" /> : <CheckCircle2 className="size-3" />}
-                              {isQuote ? "Orçamento" : "Venda"}
-                            </Badge>
-                            {isQuote && s.approvedAt && (
-                              <Badge className="gap-1 bg-chart-2 text-white hover:bg-chart-2">
-                                <BadgeCheck className="size-3" />
-                                Aprovado
-                              </Badge>
-                            )}
-                          </div>
+                          {renderTypeBadges(s)}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -678,78 +766,7 @@ export function SalesManager({
                           {formatBRL(Number(s.profitBrl))}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center justify-end gap-1">
-                            {isQuote && s.approvedAt && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-chart-2 hover:text-chart-2"
-                                aria-label="Contato por WhatsApp"
-                                title="Falar com o cliente no WhatsApp"
-                                onClick={() => openWhatsApp(s)}
-                              >
-                                <MessageCircle className="size-4" />
-                              </Button>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button variant="ghost" size="icon" aria-label="Ações">
-                                    <MoreHorizontal className="size-4" />
-                                  </Button>
-                                }
-                              />
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openReceipt(s)}>
-                                  <Printer className="mr-2 size-4" />
-                                  Ver / imprimir recibo
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleSendEmail(s)} disabled={isPending}>
-                                  <Mail className="mr-2 size-4" />
-                                  {isQuote ? "Enviar para aprovação" : "Enviar por e-mail"}
-                                </DropdownMenuItem>
-                                {isQuote && s.approvedAt && (
-                                  <DropdownMenuItem onClick={() => openWhatsApp(s)}>
-                                    <MessageCircle className="mr-2 size-4" />
-                                    Falar no WhatsApp
-                                  </DropdownMenuItem>
-                                )}
-
-                                {(perms.update || perms.delete) && <DropdownMenuSeparator />}
-
-                                {perms.update && (
-                                  <DropdownMenuItem onClick={() => openEditCustomer(s)}>
-                                    <UserPen className="mr-2 size-4" />
-                                    Editar cliente
-                                  </DropdownMenuItem>
-                                )}
-                                {isQuote && perms.update && (
-                                  <DropdownMenuItem onClick={() => handleConvert(s)}>
-                                    <CheckCircle2 className="mr-2 size-4" />
-                                    Converter em venda
-                                  </DropdownMenuItem>
-                                )}
-                                {isQuote && perms.delete && (
-                                  <DropdownMenuItem
-                                    onClick={() => handleCancel(s)}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <XCircle className="mr-2 size-4" />
-                                    Cancelar orçamento
-                                  </DropdownMenuItem>
-                                )}
-                                {!isQuote && perms.delete && (
-                                  <DropdownMenuItem
-                                    onClick={() => handleDelete(s)}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <Trash2 className="mr-2 size-4" />
-                                    Excluir venda
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                          {renderActions(s)}
                         </TableCell>
                       </TableRow>
                     )
@@ -757,6 +774,79 @@ export function SalesManager({
                 )}
               </TableBody>
             </Table>
+          </div>
+
+          {/* Visão em cards para mobile: tudo acessível sem rolagem horizontal. */}
+          <div className="flex flex-col gap-3 p-3 md:hidden">
+            {filteredSales.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                Nenhum registro encontrado.
+              </div>
+            ) : (
+              filteredSales.map((s) => {
+                const isSelected = selectedIds.has(s.id)
+                return (
+                  <div
+                    key={s.id}
+                    data-state={isSelected ? "selected" : undefined}
+                    className="rounded-lg border bg-card p-3 data-[state=selected]:border-primary data-[state=selected]:bg-muted/40"
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        className="mt-1 size-4 shrink-0 accent-primary"
+                        aria-label={`Selecionar ${formatSaleCode(s.kind, s.id)}`}
+                        checked={isSelected}
+                        onChange={() => toggleOne(s.id)}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs font-medium text-muted-foreground">
+                            {formatSaleCode(s.kind, s.id)}
+                          </span>
+                          {renderActions(s)}
+                        </div>
+                        <div className="mt-1">{renderTypeBadges(s)}</div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="font-medium">{s.productName ?? "—"}</span>
+                          <ColorTag name={s.productName} />
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          SKU {s.sku ?? "—"} · {formatUSD(Number(s.unitPriceUsd))}/un
+                        </div>
+                        <div className="mt-1 text-sm">
+                          {s.customerName ?? s.customer ?? (
+                            <span className="text-muted-foreground">Sem cliente</span>
+                          )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                          <span className="text-muted-foreground">
+                            Qtd.: <span className="tabular-nums text-foreground">{s.quantity}</span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Margem:{" "}
+                            <span className="tabular-nums text-foreground">{formatPct(Number(s.marginPct))}</span>
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                          <span className="text-muted-foreground">
+                            Total:{" "}
+                            <span className="font-medium tabular-nums text-foreground">
+                              {formatBRL(Number(s.totalBrl))}
+                            </span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Lucro:{" "}
+                            <span className="tabular-nums text-chart-2">{formatBRL(Number(s.profitBrl))}</span>
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </CardContent>
       </Card>
