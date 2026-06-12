@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen, Printer, Mail, MessageCircle, BadgeCheck, Copy } from "lucide-react"
-import { registerSaleItems, convertQuote, cancelQuote, deleteSale, updateSaleCustomer, type SaleKind } from "@/app/actions/sales"
+import { registerSaleItems, convertOrder, deleteOrder, deleteOrders, updateOrderCustomer, type SaleKind } from "@/app/actions/sales"
 import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
 import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
@@ -72,6 +72,40 @@ type Sale = {
   approvedAt: Date | null
   convertedAt: Date | null
   createdAt: Date
+}
+
+// Item de um pedido agrupado (uma linha de `sales`).
+type OrderItem = {
+  id: number
+  productId: number | null
+  productName: string | null
+  sku: string | null
+  quantity: number
+  unitPriceUsd: string
+  marginPct: string
+  totalBrl: string
+  profitBrl: string
+}
+
+// Pedido agrupado: todas as linhas que compartilham o mesmo groupId viram um
+// único registro na lista (uma visão única), com seus itens e totais somados.
+type Order = {
+  groupId: string
+  repId: number
+  kind: "sale" | "quote"
+  createdAt: Date
+  customer: string | null
+  customerId: number | null
+  customerName: string | null
+  customerPhone: string | null
+  customerEmail: string | null
+  approvalToken: string | null
+  approvedAt: Date | null
+  convertedAt: Date | null
+  items: OrderItem[]
+  totalQty: number
+  totalBrl: number
+  profitBrl: number
 }
 
 type ProductOpt = {
@@ -139,12 +173,12 @@ export function SalesManager({
   const [listQuery, setListQuery] = useState("")
   // Filtro por cor na lista de vendas.
   const [listColor, setListColor] = useState<string>("all")
-  // Edição de cliente de um registro já existente.
-  const [editCustomerFor, setEditCustomerFor] = useState<Sale | null>(null)
+  // Edição de cliente de um pedido já existente.
+  const [editCustomerFor, setEditCustomerFor] = useState<Order | null>(null)
   const [editCustomerId, setEditCustomerId] = useState<string>(NO_CUSTOMER)
   const [editCustomerText, setEditCustomerText] = useState("")
-  // Seleção (individual ou múltipla) de registros para ações em lote.
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  // Seleção (individual ou múltipla) de pedidos para ações em lote (por groupId).
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -154,26 +188,74 @@ export function SalesManager({
   // Cores distintas presentes nos produtos vendidos (para o filtro por cor).
   const colorOptions = useMemo(() => distinctColors(sales.map((s) => s.productName)), [sales])
 
-  const filteredSales = useMemo(() => {
+  // Agrupa as linhas de `sales` por pedido (groupId). Cada pedido vira um único
+  // registro na lista, com seus itens e totais somados — em vez de uma linha
+  // por produto. Registros legados sem groupId formam um pedido de um item só.
+  const orders = useMemo<Order[]>(() => {
+    const map = new Map<string, Sale[]>()
+    for (const s of sales) {
+      const key = s.groupId ?? `legacy-${s.id}`
+      const arr = map.get(key)
+      if (arr) arr.push(s)
+      else map.set(key, [s])
+    }
+    const result: Order[] = []
+    for (const [key, rows] of map) {
+      const sorted = [...rows].sort((a, b) => a.id - b.id)
+      const first = sorted[0]
+      result.push({
+        groupId: first.groupId ?? key,
+        repId: first.id,
+        kind: first.kind === "quote" ? "quote" : "sale",
+        createdAt: first.createdAt,
+        customer: first.customer,
+        customerId: first.customerId,
+        customerName: first.customerName,
+        customerPhone: first.customerPhone,
+        customerEmail: first.customerEmail,
+        approvalToken: first.approvalToken,
+        approvedAt: first.approvedAt,
+        convertedAt: first.convertedAt,
+        items: sorted.map((r) => ({
+          id: r.id,
+          productId: r.productId,
+          productName: r.productName,
+          sku: r.sku,
+          quantity: r.quantity,
+          unitPriceUsd: r.unitPriceUsd,
+          marginPct: r.marginPct,
+          totalBrl: r.totalBrl,
+          profitBrl: r.profitBrl,
+        })),
+        totalQty: sorted.reduce((n, r) => n + r.quantity, 0),
+        totalBrl: sorted.reduce((n, r) => n + Number(r.totalBrl), 0),
+        profitBrl: sorted.reduce((n, r) => n + Number(r.profitBrl), 0),
+      })
+    }
+    result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return result
+  }, [sales])
+
+  const filteredOrders = useMemo(() => {
     const q = listQuery.trim().toLowerCase()
-    return sales.filter((s) => {
-      if (filter !== "all" && s.kind !== filter) return false
-      if (listColor !== "all" && detectColor(s.productName)?.label !== listColor) return false
+    return orders.filter((o) => {
+      if (filter !== "all" && o.kind !== filter) return false
+      if (listColor !== "all" && !o.items.some((it) => detectColor(it.productName)?.label === listColor))
+        return false
       if (!q) return true
-      const code = formatSaleCode(s.kind, s.id).toLowerCase()
+      const code = formatSaleCode(o.kind, o.repId).toLowerCase()
       const haystack = [
         code,
-        String(s.id),
-        s.productName ?? "",
-        s.sku ?? "",
-        s.customerName ?? "",
-        s.customer ?? "",
+        String(o.repId),
+        o.customerName ?? "",
+        o.customer ?? "",
+        ...o.items.flatMap((it) => [it.productName ?? "", it.sku ?? ""]),
       ]
         .join(" ")
         .toLowerCase()
       return haystack.includes(q)
     })
-  }, [sales, filter, listQuery, listColor])
+  }, [orders, filter, listQuery, listColor])
 
   // Cor "efetiva" de um produto: usa a cor persistida (primeiro rótulo, caso
   // haja variações) e, na ausência dela, detecta a partir do nome.
@@ -229,12 +311,10 @@ export function SalesManager({
    * mesmo cliente, para o vendedor revisar e salvar. Não altera o pedido
    * original — apenas facilita criar um novo a partir dele.
    */
-  function duplicateOrder(s: Sale) {
-    // Todas as linhas do mesmo pedido (compartilham groupId); senão, só a linha.
-    const rows = s.groupId ? sales.filter((r) => r.groupId === s.groupId) : [s]
+  function duplicateOrder(o: Order) {
     const items: CartItem[] = []
     let skipped = 0
-    for (const r of rows) {
+    for (const r of o.items) {
       const p = r.productId != null ? products.find((pp) => pp.id === r.productId) : undefined
       if (!p) {
         skipped++
@@ -259,18 +339,18 @@ export function SalesManager({
       toast.error("Não foi possível duplicar: os produtos não estão mais disponíveis.")
       return
     }
-    setKind(s.kind === "quote" ? "quote" : "sale")
+    setKind(o.kind === "quote" ? "quote" : "sale")
     setCart(items)
     setSearch("")
     setProductColor("all")
     setUseManualRate(false)
     setManualRate(rate)
-    if (s.customerId) {
-      setCustomerId(String(s.customerId))
+    if (o.customerId) {
+      setCustomerId(String(o.customerId))
       setCustomerText("")
     } else {
       setCustomerId(NO_CUSTOMER)
-      setCustomerText(s.customer ?? "")
+      setCustomerText(o.customer ?? "")
     }
     setOpen(true)
     if (skipped > 0) {
@@ -383,10 +463,10 @@ export function SalesManager({
     })
   }
 
-  function handleConvert(s: Sale) {
+  function handleConvert(o: Order) {
     startTransition(async () => {
       try {
-        await convertQuote(s.id)
+        await convertOrder(o.groupId)
         toast.success("Orçamento convertido em venda")
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao converter")
@@ -394,24 +474,20 @@ export function SalesManager({
     })
   }
 
-  function handleCancel(s: Sale) {
-    if (!confirm(`Cancelar o orçamento #${s.id}? O estoque reservado será devolvido.`)) return
+  // Exclui um pedido inteiro (orçamento ou venda), devolvendo o estoque.
+  function handleDelete(o: Order) {
+    const code = formatSaleCode(o.kind, o.repId)
+    const label = o.kind === "quote" ? "orçamento" : "venda"
+    if (!confirm(`Excluir o ${label} ${code}? O estoque reservado será devolvido ao produto.`)) return
     startTransition(async () => {
       try {
-        await cancelQuote(s.id)
-        toast.success("Orçamento cancelado")
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao cancelar")
-      }
-    })
-  }
-
-  function handleDelete(s: Sale) {
-    if (!confirm(`Excluir a venda #${s.id}? O estoque será devolvido ao produto.`)) return
-    startTransition(async () => {
-      try {
-        await deleteSale(s.id)
-        toast.success("Venda excluída")
+        await deleteOrder(o.groupId)
+        toast.success(o.kind === "quote" ? "Orçamento excluído" : "Venda excluída")
+        setSelectedGroups((prev) => {
+          const next = new Set(prev)
+          next.delete(o.groupId)
+          return next
+        })
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao excluir")
       }
@@ -419,18 +495,18 @@ export function SalesManager({
   }
 
   // Abre o diálogo de edição de cliente já preenchido com o vínculo atual.
-  function openEditCustomer(s: Sale) {
-    setEditCustomerFor(s)
-    setEditCustomerId(s.customerId ? String(s.customerId) : NO_CUSTOMER)
-    setEditCustomerText(s.customerId ? "" : s.customer ?? "")
+  function openEditCustomer(o: Order) {
+    setEditCustomerFor(o)
+    setEditCustomerId(o.customerId ? String(o.customerId) : NO_CUSTOMER)
+    setEditCustomerText(o.customerId ? "" : o.customer ?? "")
   }
 
   function saveEditCustomer() {
-    const s = editCustomerFor
-    if (!s) return
+    const o = editCustomerFor
+    if (!o) return
     startTransition(async () => {
       try {
-        await updateSaleCustomer(s.id, {
+        await updateOrderCustomer(o.groupId, {
           customerId: editCustomerId !== NO_CUSTOMER ? Number(editCustomerId) : null,
           customer: editCustomerId === NO_CUSTOMER ? editCustomerText : null,
         })
@@ -443,88 +519,87 @@ export function SalesManager({
   }
 
   // Abre o recibo/pedido em uma nova aba (página imprimível por groupId).
-  function openReceipt(s: Sale) {
-    if (!s.groupId) {
+  function openReceipt(o: Order) {
+    if (!o.groupId) {
       toast.error("Recibo indisponível para este registro.")
       return
     }
-    window.open(`/recibo/${s.groupId}`, "_blank", "noopener,noreferrer")
+    window.open(`/recibo/${o.groupId}`, "_blank", "noopener,noreferrer")
   }
 
   // Envia o recibo/orçamento por e-mail ao cliente via Resend.
-  function handleSendEmail(s: Sale) {
-    if (!s.groupId) {
+  function handleSendEmail(o: Order) {
+    if (!o.groupId) {
       toast.error("Pedido sem identificador de grupo.")
       return
     }
-    if (!s.customerEmail) {
+    if (!o.customerEmail) {
       toast.error("O cliente não possui e-mail cadastrado. Edite o cliente para incluir um e-mail.")
       return
     }
     startTransition(async () => {
-      const res = await sendOrderEmail(s.groupId!)
+      const res = await sendOrderEmail(o.groupId)
       if (res.ok) toast.success(`E-mail enviado para ${res.email}`)
       else toast.error(res.error)
     })
   }
 
   // Inicia uma conversa no WhatsApp com o cliente, já com a mensagem do pedido.
-  function openWhatsApp(s: Sale) {
-    const phone = (s.customerPhone ?? "").replace(/\D/g, "")
+  function openWhatsApp(o: Order) {
+    const phone = (o.customerPhone ?? "").replace(/\D/g, "")
     if (!phone) {
       toast.error("O cliente não possui telefone cadastrado.")
       return
     }
     // Adiciona o DDI do Brasil (55) quando o número não o inclui.
     const fullPhone = phone.length <= 11 ? `55${phone}` : phone
-    const code = formatSaleCode(s.kind, s.id)
-    const name = s.customerName ?? s.customer ?? "cliente"
+    const code = formatSaleCode(o.kind, o.repId)
+    const name = o.customerName ?? o.customer ?? "cliente"
     const message =
       `Olá, ${name}! Tudo bem? ` +
-      `Aqui é da ${"Gestão de Estoque"}. ` +
       `Recebemos a aprovação do seu orçamento ${code} e vamos dar sequência ao seu atendimento. ` +
       `Podemos confirmar os detalhes do pedido?`
     const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`
     window.open(url, "_blank", "noopener,noreferrer")
   }
 
-  // ----- Seleção (individual e múltipla) e ações em lote -----
+  // ----- Seleção (individual e múltipla) e ações em lote (por pedido) -----
 
-  function toggleOne(id: number) {
-    setSelectedIds((prev) => {
+  function toggleOne(groupId: string) {
+    setSelectedGroups((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
       return next
     })
   }
 
-  // Marca/desmarca todos os registros atualmente filtrados.
+  // Marca/desmarca todos os pedidos atualmente filtrados.
   function toggleAll() {
-    setSelectedIds((prev) => {
-      const allSelected = filteredSales.length > 0 && filteredSales.every((s) => prev.has(s.id))
+    setSelectedGroups((prev) => {
+      const allSelected = filteredOrders.length > 0 && filteredOrders.every((o) => prev.has(o.groupId))
       if (allSelected) return new Set()
-      return new Set(filteredSales.map((s) => s.id))
+      return new Set(filteredOrders.map((o) => o.groupId))
     })
   }
 
   function clearSelection() {
-    setSelectedIds(new Set())
+    setSelectedGroups(new Set())
   }
 
-  // Registros atualmente selecionados (dentro do filtro vigente).
-  const selectedSales = useMemo(
-    () => filteredSales.filter((s) => selectedIds.has(s.id)),
-    [filteredSales, selectedIds],
+  // Pedidos atualmente selecionados (dentro do filtro vigente).
+  const selectedOrders = useMemo(
+    () => filteredOrders.filter((o) => selectedGroups.has(o.groupId)),
+    [filteredOrders, selectedGroups],
   )
 
   const allFilteredSelected =
-    filteredSales.length > 0 && filteredSales.every((s) => selectedIds.has(s.id))
-  const someFilteredSelected = filteredSales.some((s) => selectedIds.has(s.id))
+    filteredOrders.length > 0 && filteredOrders.every((o) => selectedGroups.has(o.groupId))
+  const someFilteredSelected = filteredOrders.some((o) => selectedGroups.has(o.groupId))
 
-  // Abre o(s) recibo(s) dos registros selecionados (um por pedido/groupId).
+  // Abre o(s) recibo(s) dos pedidos selecionados (um por pedido/groupId).
   function bulkReceipts() {
-    const groups = Array.from(new Set(selectedSales.map((s) => s.groupId).filter(Boolean) as string[]))
+    const groups = selectedOrders.map((o) => o.groupId).filter(Boolean)
     if (groups.length === 0) {
       toast.error("Nenhum recibo disponível para a seleção.")
       return
@@ -537,26 +612,20 @@ export function SalesManager({
 
   // Envia para aprovação por e-mail os pedidos selecionados (um e-mail por pedido).
   function bulkSendEmail() {
-    const seen = new Set<string>()
-    const targets: Sale[] = []
-    for (const s of selectedSales) {
-      if (!s.groupId || seen.has(s.groupId)) continue
-      seen.add(s.groupId)
-      targets.push(s)
-    }
+    const targets = selectedOrders
     if (targets.length === 0) {
       toast.error("Nenhum pedido válido na seleção.")
       return
     }
-    const withoutEmail = targets.filter((s) => !s.customerEmail).length
+    const withoutEmail = targets.filter((o) => !o.customerEmail).length
     startTransition(async () => {
       let sent = 0
       const errors: string[] = []
-      for (const s of targets) {
-        if (!s.customerEmail) continue
-        const res = await sendOrderEmail(s.groupId!)
+      for (const o of targets) {
+        if (!o.customerEmail) continue
+        const res = await sendOrderEmail(o.groupId)
         if (res.ok) sent++
-        else errors.push(`${formatSaleCode(s.kind, s.id)}: ${res.error}`)
+        else errors.push(`${formatSaleCode(o.kind, o.repId)}: ${res.error}`)
       }
       if (sent > 0) toast.success(`${sent} e-mail(s) enviado(s) para aprovação.`)
       if (withoutEmail > 0) toast.error(`${withoutEmail} pedido(s) sem e-mail do cliente foram ignorados.`)
@@ -565,20 +634,42 @@ export function SalesManager({
     })
   }
 
+  // Exclui em massa todos os pedidos selecionados (orçamentos e/ou vendas),
+  // devolvendo o estoque de cada item.
+  function bulkDelete() {
+    const groups = selectedOrders.map((o) => o.groupId)
+    if (groups.length === 0) {
+      toast.error("Nenhum pedido selecionado.")
+      return
+    }
+    if (!confirm(`Excluir ${groups.length} pedido(s) selecionado(s)? O estoque será devolvido aos produtos.`)) {
+      return
+    }
+    startTransition(async () => {
+      try {
+        const res = await deleteOrders(groups)
+        toast.success(`${res.orders} pedido(s) excluído(s) — estoque devolvido.`)
+        clearSelection()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao excluir pedidos")
+      }
+    })
+  }
+
   // Ações de um registro (botão WhatsApp quando aprovado + menu suspenso).
   // Reutilizado na tabela (desktop) e nos cards (mobile).
-  function renderActions(s: Sale) {
-    const isQuote = s.kind === "quote"
+  function renderActions(o: Order) {
+    const isQuote = o.kind === "quote"
     return (
       <div className="flex items-center justify-end gap-1">
-        {isQuote && s.approvedAt && (
+        {isQuote && o.approvedAt && (
           <Button
             variant="ghost"
             size="icon"
             className="text-chart-2 hover:text-chart-2"
             aria-label="Contato por WhatsApp"
             title="Falar com o cliente no WhatsApp"
-            onClick={() => openWhatsApp(s)}
+            onClick={() => openWhatsApp(o)}
           >
             <MessageCircle className="size-4" />
           </Button>
@@ -592,16 +683,16 @@ export function SalesManager({
             }
           />
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openReceipt(s)}>
+            <DropdownMenuItem onClick={() => openReceipt(o)}>
               <Printer className="mr-2 size-4" />
               Ver / imprimir recibo
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleSendEmail(s)} disabled={isPending}>
+            <DropdownMenuItem onClick={() => handleSendEmail(o)} disabled={isPending}>
               <Mail className="mr-2 size-4" />
               {isQuote ? "Enviar para aprovação" : "Enviar por e-mail"}
             </DropdownMenuItem>
-            {isQuote && s.approvedAt && (
-              <DropdownMenuItem onClick={() => openWhatsApp(s)}>
+            {isQuote && o.approvedAt && (
+              <DropdownMenuItem onClick={() => openWhatsApp(o)}>
                 <MessageCircle className="mr-2 size-4" />
                 Falar no WhatsApp
               </DropdownMenuItem>
@@ -610,39 +701,30 @@ export function SalesManager({
             {(perms.update || perms.delete || perms.create) && <DropdownMenuSeparator />}
 
             {perms.create && (
-              <DropdownMenuItem onClick={() => duplicateOrder(s)}>
+              <DropdownMenuItem onClick={() => duplicateOrder(o)}>
                 <Copy className="mr-2 size-4" />
                 Duplicar pedido
               </DropdownMenuItem>
             )}
             {perms.update && (
-              <DropdownMenuItem onClick={() => openEditCustomer(s)}>
+              <DropdownMenuItem onClick={() => openEditCustomer(o)}>
                 <UserPen className="mr-2 size-4" />
                 Editar cliente
               </DropdownMenuItem>
             )}
             {isQuote && perms.update && (
-              <DropdownMenuItem onClick={() => handleConvert(s)}>
+              <DropdownMenuItem onClick={() => handleConvert(o)}>
                 <CheckCircle2 className="mr-2 size-4" />
                 Converter em venda
               </DropdownMenuItem>
             )}
-            {isQuote && perms.delete && (
+            {perms.delete && (
               <DropdownMenuItem
-                onClick={() => handleCancel(s)}
+                onClick={() => handleDelete(o)}
                 className="text-destructive focus:text-destructive"
               >
-                <XCircle className="mr-2 size-4" />
-                Cancelar orçamento
-              </DropdownMenuItem>
-            )}
-            {!isQuote && perms.delete && (
-              <DropdownMenuItem
-                onClick={() => handleDelete(s)}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="mr-2 size-4" />
-                Excluir venda
+                {isQuote ? <XCircle className="mr-2 size-4" /> : <Trash2 className="mr-2 size-4" />}
+                {isQuote ? "Excluir orçamento" : "Excluir venda"}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -652,15 +734,15 @@ export function SalesManager({
   }
 
   // Selo de tipo (Orçamento/Venda) + selo "Aprovado". Reutilizado na tabela e cards.
-  function renderTypeBadges(s: Sale) {
-    const isQuote = s.kind === "quote"
+  function renderTypeBadges(o: Order) {
+    const isQuote = o.kind === "quote"
     return (
       <div className="flex flex-wrap items-center gap-1">
         <Badge variant={isQuote ? "outline" : "secondary"} className="gap-1">
           {isQuote ? <FileText className="size-3" /> : <CheckCircle2 className="size-3" />}
           {isQuote ? "Orçamento" : "Venda"}
         </Badge>
-        {isQuote && s.approvedAt && (
+        {isQuote && o.approvedAt && (
           <Badge className="gap-1 bg-chart-2 text-white hover:bg-chart-2">
             <BadgeCheck className="size-3" />
             Aprovado
@@ -725,10 +807,10 @@ export function SalesManager({
 
       <Card>
         <CardContent className="p-0">
-          {selectedIds.size > 0 && (
+          {selectedGroups.size > 0 && (
             <div className="flex flex-col gap-3 border-b bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-sm">
-                <Badge variant="secondary">{selectedIds.size} selecionado(s)</Badge>
+                <Badge variant="secondary">{selectedGroups.size} selecionado(s)</Badge>
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={clearSelection}>
                   Limpar seleção
                 </Button>
@@ -742,6 +824,18 @@ export function SalesManager({
                   <Mail className="size-4" aria-hidden="true" />
                   {isPending ? "Enviando..." : "Enviar para aprovação"}
                 </Button>
+                {perms.delete && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="gap-2"
+                    onClick={bulkDelete}
+                    disabled={isPending}
+                  >
+                    <Trash2 className="size-4" aria-hidden="true" />
+                    Excluir
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -759,79 +853,80 @@ export function SalesManager({
                         if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected
                       }}
                       onChange={toggleAll}
-                      disabled={filteredSales.length === 0}
+                      disabled={filteredOrders.length === 0}
                     />
                   </TableHead>
                   <TableHead>Identificador</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead>Produto</TableHead>
+                  <TableHead>Produtos</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead className="text-right">Qtd.</TableHead>
-                  <TableHead className="text-right">Margem</TableHead>
                   <TableHead className="text-right">Total (BRL)</TableHead>
                   <TableHead className="text-right">Lucro (BRL)</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSales.length === 0 ? (
+                {filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                       Nenhum registro encontrado.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredSales.map((s) => {
-                    const isQuote = s.kind === "quote"
-                    const isSelected = selectedIds.has(s.id)
+                  filteredOrders.map((o) => {
+                    const isSelected = selectedGroups.has(o.groupId)
                     return (
-                      <TableRow key={s.id} data-state={isSelected ? "selected" : undefined}>
-                        <TableCell className="w-10">
+                      <TableRow key={o.groupId} data-state={isSelected ? "selected" : undefined}>
+                        <TableCell className="w-10 align-top">
                           <input
                             type="checkbox"
-                            className="size-4 accent-primary align-middle"
-                            aria-label={`Selecionar ${formatSaleCode(s.kind, s.id)}`}
+                            className="mt-1 size-4 accent-primary align-middle"
+                            aria-label={`Selecionar ${formatSaleCode(o.kind, o.repId)}`}
                             checked={isSelected}
-                            onChange={() => toggleOne(s.id)}
+                            onChange={() => toggleOne(o.groupId)}
                           />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap font-mono text-xs font-medium">
-                          {formatSaleCode(s.kind, s.id)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {formatDateTime(s.createdAt)}
-                        </TableCell>
-                        <TableCell>
-                          {renderTypeBadges(s)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{s.productName ?? "—"}</span>
-                            <ColorTag name={s.productName} />
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            SKU {s.sku ?? "—"} · {formatUSD(Number(s.unitPriceUsd))}/un
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {s.customerName ?? s.customer ?? (
-                            <span className="text-muted-foreground">—</span>
+                        <TableCell className="whitespace-nowrap align-top font-mono text-xs font-medium">
+                          {formatSaleCode(o.kind, o.repId)}
+                          {o.items.length > 1 && (
+                            <span className="ml-1 font-sans text-muted-foreground">({o.items.length} itens)</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">{s.quantity}</TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          {formatPct(Number(s.marginPct))}
+                        <TableCell className="whitespace-nowrap align-top text-sm text-muted-foreground">
+                          {formatDateTime(o.createdAt)}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">
-                          {formatBRL(Number(s.totalBrl))}
+                        <TableCell className="align-top">{renderTypeBadges(o)}</TableCell>
+                        <TableCell className="align-top">
+                          <ul className="space-y-1.5">
+                            {o.items.map((it) => (
+                              <li key={it.id}>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">
+                                    {it.quantity}× {it.productName ?? "—"}
+                                  </span>
+                                  <ColorTag name={it.productName} />
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  SKU {it.sku ?? "—"} · {formatUSD(Number(it.unitPriceUsd))}/un · margem{" "}
+                                  {formatPct(Number(it.marginPct))}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
                         </TableCell>
-                        <TableCell className="text-right tabular-nums text-chart-2">
-                          {formatBRL(Number(s.profitBrl))}
+                        <TableCell className="align-top text-sm">
+                          {o.customerName ?? o.customer ?? <span className="text-muted-foreground">—</span>}
                         </TableCell>
-                        <TableCell>
-                          {renderActions(s)}
+                        <TableCell className="align-top text-right tabular-nums">{o.totalQty}</TableCell>
+                        <TableCell className="align-top text-right tabular-nums font-medium">
+                          {formatBRL(o.totalBrl)}
                         </TableCell>
+                        <TableCell className="align-top text-right tabular-nums text-chart-2">
+                          {formatBRL(o.profitBrl)}
+                        </TableCell>
+                        <TableCell className="align-top">{renderActions(o)}</TableCell>
                       </TableRow>
                     )
                   })
@@ -842,16 +937,16 @@ export function SalesManager({
 
           {/* Visão em cards para mobile: tudo acessível sem rolagem horizontal. */}
           <div className="flex flex-col gap-3 p-3 md:hidden">
-            {filteredSales.length === 0 ? (
+            {filteredOrders.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
                 Nenhum registro encontrado.
               </div>
             ) : (
-              filteredSales.map((s) => {
-                const isSelected = selectedIds.has(s.id)
+              filteredOrders.map((o) => {
+                const isSelected = selectedGroups.has(o.groupId)
                 return (
                   <div
-                    key={s.id}
+                    key={o.groupId}
                     data-state={isSelected ? "selected" : undefined}
                     className="rounded-lg border bg-card p-3 data-[state=selected]:border-primary data-[state=selected]:bg-muted/40"
                   >
@@ -859,52 +954,58 @@ export function SalesManager({
                       <input
                         type="checkbox"
                         className="mt-1 size-4 shrink-0 accent-primary"
-                        aria-label={`Selecionar ${formatSaleCode(s.kind, s.id)}`}
+                        aria-label={`Selecionar ${formatSaleCode(o.kind, o.repId)}`}
                         checked={isSelected}
-                        onChange={() => toggleOne(s.id)}
+                        onChange={() => toggleOne(o.groupId)}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-mono text-xs font-medium text-muted-foreground">
-                            {formatSaleCode(s.kind, s.id)}
+                            {formatSaleCode(o.kind, o.repId)}
+                            {o.items.length > 1 && (
+                              <span className="ml-1 font-sans">({o.items.length} itens)</span>
+                            )}
                           </span>
-                          {renderActions(s)}
+                          {renderActions(o)}
                         </div>
-                        <div className="mt-1">{renderTypeBadges(s)}</div>
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="font-medium">{s.productName ?? "—"}</span>
-                          <ColorTag name={s.productName} />
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          SKU {s.sku ?? "—"} · {formatUSD(Number(s.unitPriceUsd))}/un
-                        </div>
-                        <div className="mt-1 text-sm">
-                          {s.customerName ?? s.customer ?? (
+                        <div className="mt-1">{renderTypeBadges(o)}</div>
+                        <ul className="mt-2 space-y-1.5">
+                          {o.items.map((it) => (
+                            <li key={it.id}>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">
+                                  {it.quantity}× {it.productName ?? "—"}
+                                </span>
+                                <ColorTag name={it.productName} />
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                SKU {it.sku ?? "—"} · {formatUSD(Number(it.unitPriceUsd))}/un · margem{" "}
+                                {formatPct(Number(it.marginPct))}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-2 text-sm">
+                          {o.customerName ?? o.customer ?? (
                             <span className="text-muted-foreground">Sem cliente</span>
                           )}
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                           <span className="text-muted-foreground">
-                            Qtd.: <span className="tabular-nums text-foreground">{s.quantity}</span>
+                            Qtd.: <span className="tabular-nums text-foreground">{o.totalQty}</span>
                           </span>
-                          <span className="text-muted-foreground">
-                            Margem:{" "}
-                            <span className="tabular-nums text-foreground">{formatPct(Number(s.marginPct))}</span>
-                          </span>
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                           <span className="text-muted-foreground">
                             Total:{" "}
                             <span className="font-medium tabular-nums text-foreground">
-                              {formatBRL(Number(s.totalBrl))}
+                              {formatBRL(o.totalBrl)}
                             </span>
                           </span>
                           <span className="text-muted-foreground">
                             Lucro:{" "}
-                            <span className="tabular-nums text-chart-2">{formatBRL(Number(s.profitBrl))}</span>
+                            <span className="tabular-nums text-chart-2">{formatBRL(o.profitBrl)}</span>
                           </span>
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(o.createdAt)}</div>
                       </div>
                     </div>
                   </div>
