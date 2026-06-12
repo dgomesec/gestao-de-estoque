@@ -31,6 +31,11 @@ export async function getSales(limit = 300) {
       customer: sales.customer,
       customerId: sales.customerId,
       customerName: customers.name,
+      customerPhone: customers.phone,
+      customerEmail: customers.email,
+      groupId: sales.groupId,
+      approvalToken: sales.approvalToken,
+      approvedAt: sales.approvedAt,
       convertedAt: sales.convertedAt,
       createdAt: sales.createdAt,
     })
@@ -114,6 +119,8 @@ export async function registerSale(input: RegisterInput) {
       customer: input.customer?.trim() || null,
       customerId: input.customerId ?? null,
       soldBy: ctx.user.id,
+      groupId: crypto.randomUUID(),
+      approvalToken: kind === 'quote' ? crypto.randomUUID() : null,
       convertedAt: null,
     })
     .returning()
@@ -209,6 +216,11 @@ export async function registerSaleItems(input: RegisterItemsInput) {
   const createdIds: number[] = []
   let totalBrlAll = 0
 
+  // Todas as linhas deste pedido compartilham o mesmo groupId (um recibo único)
+  // e, no caso de orçamento, o mesmo token de aprovação (um link único).
+  const groupId = crypto.randomUUID()
+  const approvalToken = kind === 'quote' ? crypto.randomUUID() : null
+
   for (const it of items) {
     const product = byId.get(it.productId)!
     const costUsd = Number(product.priceUsd)
@@ -240,6 +252,8 @@ export async function registerSaleItems(input: RegisterItemsInput) {
         customer: input.customer?.trim() || null,
         customerId: input.customerId ?? null,
         soldBy: ctx.user.id,
+        groupId,
+        approvalToken,
         convertedAt: null,
       })
       .returning()
@@ -276,7 +290,7 @@ export async function registerSaleItems(input: RegisterItemsInput) {
   revalidatePath('/estoque')
   revalidatePath('/dashboard')
   revalidatePath('/relatorios')
-  return { count: createdIds.length, ids: createdIds }
+  return { count: createdIds.length, ids: createdIds, groupId }
 }
 
 /**
@@ -445,3 +459,41 @@ export async function cancelQuote(id: number) {
   revalidatePath('/estoque')
   revalidatePath('/dashboard')
 }
+
+/**
+ * Aprova um orçamento a partir do token público (link enviado ao cliente).
+ * NÃO exige autenticação: é a ação que o próprio cliente executa. Apenas marca
+ * o orçamento como aprovado (approvedAt) — o vendedor decide quando converter
+ * em venda. Idempotente: aprovar de novo não causa erro.
+ */
+export async function approveQuoteByToken(token: string) {
+  if (!token) return { ok: false as const, error: 'Link inválido.' }
+
+  const rows = await db.select().from(sales).where(eq(sales.approvalToken, token))
+  if (rows.length === 0) return { ok: false as const, error: 'Orçamento não encontrado.' }
+  if (rows.some((r) => r.kind !== 'quote')) {
+    return { ok: false as const, error: 'Este pedido não está mais disponível para aprovação.' }
+  }
+
+  const alreadyApproved = rows.every((r) => r.approvedAt != null)
+  if (!alreadyApproved) {
+    await db
+      .update(sales)
+      .set({ approvedAt: new Date() })
+      .where(eq(sales.approvalToken, token))
+
+    const groupId = rows[0].groupId
+    await logAudit({
+      action: 'update',
+      resource: 'sales',
+      summary: `Orçamento aprovado pelo cliente (pedido ${groupId ?? token})`,
+      metadata: { groupId, saleIds: rows.map((r) => r.id) },
+    })
+
+    revalidatePath('/vendas')
+    revalidatePath('/dashboard')
+  }
+
+  return { ok: true as const, alreadyApproved }
+}
+

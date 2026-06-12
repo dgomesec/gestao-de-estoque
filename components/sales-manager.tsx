@@ -38,11 +38,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen } from "lucide-react"
+import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen, Printer, Mail, MessageCircle, BadgeCheck } from "lucide-react"
 import { registerSaleItems, convertQuote, cancelQuote, deleteSale, updateSaleCustomer, type SaleKind } from "@/app/actions/sales"
+import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
 import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
 import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from "@/lib/format"
@@ -62,6 +64,11 @@ type Sale = {
   customer: string | null
   customerId: number | null
   customerName: string | null
+  customerPhone: string | null
+  customerEmail: string | null
+  groupId: string | null
+  approvalToken: string | null
+  approvedAt: Date | null
   convertedAt: Date | null
   createdAt: Date
 }
@@ -375,6 +382,52 @@ export function SalesManager({
     })
   }
 
+  // Abre o recibo/pedido em uma nova aba (página imprimível por groupId).
+  function openReceipt(s: Sale) {
+    if (!s.groupId) {
+      toast.error("Recibo indisponível para este registro.")
+      return
+    }
+    window.open(`/recibo/${s.groupId}`, "_blank", "noopener,noreferrer")
+  }
+
+  // Envia o recibo/orçamento por e-mail ao cliente via Resend.
+  function handleSendEmail(s: Sale) {
+    if (!s.groupId) {
+      toast.error("Pedido sem identificador de grupo.")
+      return
+    }
+    if (!s.customerEmail) {
+      toast.error("O cliente não possui e-mail cadastrado. Edite o cliente para incluir um e-mail.")
+      return
+    }
+    startTransition(async () => {
+      const res = await sendOrderEmail(s.groupId!)
+      if (res.ok) toast.success(`E-mail enviado para ${res.email}`)
+      else toast.error(res.error)
+    })
+  }
+
+  // Inicia uma conversa no WhatsApp com o cliente, já com a mensagem do pedido.
+  function openWhatsApp(s: Sale) {
+    const phone = (s.customerPhone ?? "").replace(/\D/g, "")
+    if (!phone) {
+      toast.error("O cliente não possui telefone cadastrado.")
+      return
+    }
+    // Adiciona o DDI do Brasil (55) quando o número não o inclui.
+    const fullPhone = phone.length <= 11 ? `55${phone}` : phone
+    const code = formatSaleCode(s.kind, s.id)
+    const name = s.customerName ?? s.customer ?? "cliente"
+    const message =
+      `Olá, ${name}! Tudo bem? ` +
+      `Aqui é da ${"Gestão de Estoque"}. ` +
+      `Recebemos a aprovação do seu orçamento ${code} e vamos dar sequência ao seu atendimento. ` +
+      `Podemos confirmar os detalhes do pedido?`
+    const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`
+    window.open(url, "_blank", "noopener,noreferrer")
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -465,10 +518,18 @@ export function SalesManager({
                           {formatDateTime(s.createdAt)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={isQuote ? "outline" : "secondary"} className="gap-1">
-                            {isQuote ? <FileText className="size-3" /> : <CheckCircle2 className="size-3" />}
-                            {isQuote ? "Orçamento" : "Venda"}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant={isQuote ? "outline" : "secondary"} className="gap-1">
+                              {isQuote ? <FileText className="size-3" /> : <CheckCircle2 className="size-3" />}
+                              {isQuote ? "Orçamento" : "Venda"}
+                            </Badge>
+                            {isQuote && s.approvedAt && (
+                              <Badge className="gap-1 bg-chart-2 text-white hover:bg-chart-2">
+                                <BadgeCheck className="size-3" />
+                                Aprovado
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -495,49 +556,62 @@ export function SalesManager({
                           {formatBRL(Number(s.profitBrl))}
                         </TableCell>
                         <TableCell>
-                          {(perms.update || perms.delete) && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button variant="ghost" size="icon" aria-label="Ações">
-                                    <MoreHorizontal className="size-4" />
-                                  </Button>
-                                }
-                              />
-                              <DropdownMenuContent align="end">
-                                {perms.update && (
-                                  <DropdownMenuItem onClick={() => openEditCustomer(s)}>
-                                    <UserPen className="mr-2 size-4" />
-                                    Editar cliente
-                                  </DropdownMenuItem>
-                                )}
-                                {isQuote && perms.update && (
-                                  <DropdownMenuItem onClick={() => handleConvert(s)}>
-                                    <CheckCircle2 className="mr-2 size-4" />
-                                    Converter em venda
-                                  </DropdownMenuItem>
-                                )}
-                                {isQuote && perms.delete && (
-                                  <DropdownMenuItem
-                                    onClick={() => handleCancel(s)}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <XCircle className="mr-2 size-4" />
-                                    Cancelar orçamento
-                                  </DropdownMenuItem>
-                                )}
-                                {!isQuote && perms.delete && (
-                                  <DropdownMenuItem
-                                    onClick={() => handleDelete(s)}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <Trash2 className="mr-2 size-4" />
-                                    Excluir venda
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button variant="ghost" size="icon" aria-label="Ações">
+                                  <MoreHorizontal className="size-4" />
+                                </Button>
+                              }
+                            />
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openReceipt(s)}>
+                                <Printer className="mr-2 size-4" />
+                                Ver / imprimir recibo
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSendEmail(s)} disabled={isPending}>
+                                <Mail className="mr-2 size-4" />
+                                Enviar por e-mail
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openWhatsApp(s)}>
+                                <MessageCircle className="mr-2 size-4" />
+                                Enviar pelo WhatsApp
+                              </DropdownMenuItem>
+
+                              {(perms.update || perms.delete) && <DropdownMenuSeparator />}
+
+                              {perms.update && (
+                                <DropdownMenuItem onClick={() => openEditCustomer(s)}>
+                                  <UserPen className="mr-2 size-4" />
+                                  Editar cliente
+                                </DropdownMenuItem>
+                              )}
+                              {isQuote && perms.update && (
+                                <DropdownMenuItem onClick={() => handleConvert(s)}>
+                                  <CheckCircle2 className="mr-2 size-4" />
+                                  Converter em venda
+                                </DropdownMenuItem>
+                              )}
+                              {isQuote && perms.delete && (
+                                <DropdownMenuItem
+                                  onClick={() => handleCancel(s)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <XCircle className="mr-2 size-4" />
+                                  Cancelar orçamento
+                                </DropdownMenuItem>
+                              )}
+                              {!isQuote && perms.delete && (
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(s)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 size-4" />
+                                  Excluir venda
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     )

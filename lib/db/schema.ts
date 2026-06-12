@@ -159,6 +159,13 @@ export const sales = pgTable("sales", {
   customer: text("customer"),
   customerId: integer("customerId"),
   soldBy: text("soldBy").notNull(),
+  // Agrupa todas as linhas de um mesmo pedido (venda/orçamento com vários itens).
+  // Permite gerar um único recibo e um único link de aprovação por pedido.
+  groupId: text("groupId"),
+  // Token público (aleatório) usado no link de aprovação do orçamento.
+  approvalToken: text("approvalToken"),
+  // Quando o cliente aprovou o orçamento pelo link público.
+  approvedAt: timestamp("approvedAt"),
   // Quando um orçamento foi convertido em venda.
   convertedAt: timestamp("convertedAt"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
