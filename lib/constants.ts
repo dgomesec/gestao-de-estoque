@@ -23,6 +23,15 @@ export const ACTIONS = [
 export type ResourceKey = (typeof RESOURCES)[number]['key']
 export type ActionKey = (typeof ACTIONS)[number]['key']
 
+// Mapa rápido de rótulos por recurso (usado no painel master e em UIs).
+export const RESOURCE_LABELS: Record<ResourceKey, string> = RESOURCES.reduce(
+  (acc, r) => {
+    acc[r.key] = r.label
+    return acc
+  },
+  {} as Record<ResourceKey, string>,
+)
+
 export type Permission = `${ResourceKey}:${ActionKey}`
 
 // Itens de navegação do painel e a permissão mínima (view) que os habilita.

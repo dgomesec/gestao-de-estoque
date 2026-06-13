@@ -2,13 +2,26 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { tenants, user as userTable, userRoles, appRoles } from '@/lib/db/schema'
+import {
+  tenants,
+  user as userTable,
+  userRoles,
+  appRoles,
+  rolePermissions,
+  products,
+  stockMovements,
+  sales,
+  customers,
+  salesGoals,
+  settings,
+  auditLogs,
+} from '@/lib/db/schema'
 import { requirePlatformAdmin } from '@/lib/rbac'
 import { provisionTenantDefaults } from '@/lib/tenant-provision'
 import { logAudit } from '@/lib/audit'
 import { TENANT_COOKIE, TOGGLEABLE_FEATURES, parseFeatures } from '@/lib/tenant'
 import type { ResourceKey } from '@/lib/constants'
-import { and, asc, count, eq } from 'drizzle-orm'
+import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
@@ -286,6 +299,106 @@ async function createTenantAdminInternal(input: {
     .insert(userRoles)
     .values({ tenantId: input.tenantId, userId: created.id, roleId: input.superAdminRoleId })
     .onConflictDoNothing()
+}
+
+/**
+ * Exclui um cliente e TODOS os seus dados. Requer confirmação pelo nome exato.
+ * Operação destrutiva e irreversível.
+ */
+export async function deleteTenant(id: string, confirmName: string) {
+  const ctx = await requirePlatformAdmin()
+
+  const [t] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1)
+  if (!t) throw new Error('Cliente não encontrado')
+  if (confirmName.trim() !== t.name) {
+    throw new Error('O nome de confirmação não confere com o nome do cliente')
+  }
+
+  // Remove dados em ordem segura (filhos antes dos pais).
+  const roleRows = await db
+    .select({ id: appRoles.id })
+    .from(appRoles)
+    .where(eq(appRoles.tenantId, id))
+  const roleIds = roleRows.map((r) => r.id)
+  if (roleIds.length) {
+    await db.delete(rolePermissions).where(inArray(rolePermissions.roleId, roleIds))
+  }
+
+  await db.delete(stockMovements).where(eq(stockMovements.tenantId, id))
+  await db.delete(sales).where(eq(sales.tenantId, id))
+  await db.delete(salesGoals).where(eq(salesGoals.tenantId, id))
+  await db.delete(customers).where(eq(customers.tenantId, id))
+  await db.delete(products).where(eq(products.tenantId, id))
+  await db.delete(settings).where(eq(settings.tenantId, id))
+  await db.delete(userRoles).where(eq(userRoles.tenantId, id))
+  await db.delete(appRoles).where(eq(appRoles.tenantId, id))
+  await db.delete(userTable).where(eq(userTable.tenantId, id))
+  await db.delete(auditLogs).where(eq(auditLogs.tenantId, id))
+  await db.delete(tenants).where(eq(tenants.id, id))
+
+  await logAudit({
+    action: 'delete',
+    resource: 'settings',
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Cliente "${t.name}" (${t.slug}) excluído permanentemente pela plataforma`,
+  })
+
+  revalidatePath('/admin')
+  return { ok: true }
+}
+
+/** Ativa/suspende vários clientes de uma vez. */
+export async function bulkSetTenantStatus(ids: string[], status: 'active' | 'suspended') {
+  const ctx = await requirePlatformAdmin()
+  if (status !== 'active' && status !== 'suspended') throw new Error('Status inválido')
+  if (!ids.length) return { ok: true, count: 0 }
+
+  await db.update(tenants).set({ status, updatedAt: new Date() }).where(inArray(tenants.id, ids))
+
+  await logAudit({
+    action: 'update',
+    resource: 'settings',
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `${ids.length} cliente(s) ${status === 'suspended' ? 'suspenso(s)' : 'reativado(s)'} em massa`,
+  })
+
+  revalidatePath('/admin')
+  return { ok: true, count: ids.length }
+}
+
+/** Liga/desliga uma funcionalidade específica para vários clientes. */
+export async function bulkToggleFeature(ids: string[], feature: string, enabled: boolean) {
+  const ctx = await requirePlatformAdmin()
+  if (!(TOGGLEABLE_FEATURES as string[]).includes(feature)) {
+    throw new Error('Funcionalidade inválida')
+  }
+  if (!ids.length) return { ok: true, count: 0 }
+
+  const rows = await db.select().from(tenants).where(inArray(tenants.id, ids))
+  for (const t of rows) {
+    const map = parseFeatures(t.features)
+    map[feature] = enabled
+    await db
+      .update(tenants)
+      .set({ features: JSON.stringify(map), updatedAt: new Date() })
+      .where(eq(tenants.id, t.id))
+  }
+
+  await logAudit({
+    action: 'update',
+    resource: 'settings',
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Funcionalidade "${feature}" ${enabled ? 'ativada' : 'desativada'} em ${rows.length} cliente(s)`,
+  })
+
+  revalidatePath('/admin')
+  return { ok: true, count: rows.length }
 }
 
 /**
