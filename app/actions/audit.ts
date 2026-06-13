@@ -3,7 +3,7 @@
 import { db } from "@/lib/db"
 import { auditLogs } from "@/lib/db/schema"
 import { requirePermission } from "@/lib/rbac"
-import { and, desc, eq, gte, ilike, or, sql } from "drizzle-orm"
+import { and, desc, eq, gte, ilike, or, sql, type SQL } from "drizzle-orm"
 
 export type AuditLogRow = {
   id: number
@@ -31,9 +31,9 @@ export type AuditFilters = {
 }
 
 export async function getAuditLogs(filters: AuditFilters = {}): Promise<AuditLogRow[]> {
-  await requirePermission("audit", "view")
+  const ctx = await requirePermission("audit", "view")
 
-  const conditions = []
+  const conditions: SQL<unknown>[] = [eq(auditLogs.tenantId, ctx.tenantId)]
   if (filters.action && filters.action !== "all") {
     conditions.push(eq(auditLogs.action, filters.action))
   }
@@ -42,20 +42,19 @@ export async function getAuditLogs(filters: AuditFilters = {}): Promise<AuditLog
   }
   if (filters.search?.trim()) {
     const q = `%${filters.search.trim()}%`
-    conditions.push(
-      or(
-        ilike(auditLogs.userName, q),
-        ilike(auditLogs.userEmail, q),
-        ilike(auditLogs.summary, q),
-        ilike(auditLogs.ipAddress, q),
-      ),
+    const search = or(
+      ilike(auditLogs.userName, q),
+      ilike(auditLogs.userEmail, q),
+      ilike(auditLogs.summary, q),
+      ilike(auditLogs.ipAddress, q),
     )
+    if (search) conditions.push(search)
   }
 
   return db
     .select()
     .from(auditLogs)
-    .where(conditions.length ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(auditLogs.createdAt))
     .limit(Math.min(filters.limit ?? 200, 500))
 }
@@ -68,25 +67,26 @@ export type AuditStats = {
 }
 
 export async function getAuditStats(): Promise<AuditStats> {
-  await requirePermission("audit", "view")
+  const ctx = await requirePermission("audit", "view")
+  const t = eq(auditLogs.tenantId, ctx.tenantId)
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
   const [[{ total }], [{ last24h }], [{ logins7d }], [{ activeUsers7d }]] = await Promise.all([
-    db.select({ total: sql<number>`count(*)` }).from(auditLogs),
+    db.select({ total: sql<number>`count(*)` }).from(auditLogs).where(t),
     db
       .select({ last24h: sql<number>`count(*)` })
       .from(auditLogs)
-      .where(gte(auditLogs.createdAt, dayAgo)),
+      .where(and(t, gte(auditLogs.createdAt, dayAgo))),
     db
       .select({ logins7d: sql<number>`count(*)` })
       .from(auditLogs)
-      .where(and(eq(auditLogs.action, "login"), gte(auditLogs.createdAt, weekAgo))),
+      .where(and(t, eq(auditLogs.action, "login"), gte(auditLogs.createdAt, weekAgo))),
     db
       .select({ activeUsers7d: sql<number>`count(distinct ${auditLogs.userId})` })
       .from(auditLogs)
-      .where(gte(auditLogs.createdAt, weekAgo)),
+      .where(and(t, gte(auditLogs.createdAt, weekAgo))),
   ])
 
   return {

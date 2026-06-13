@@ -1,42 +1,29 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { appRoles, user as userTable, userRoles } from '@/lib/db/schema'
+import { user as userTable } from '@/lib/db/schema'
 import { count, eq } from 'drizzle-orm'
 
 /**
- * Chamado logo após o cadastro. Garante que:
- * - O PRIMEIRO usuário do sistema recebe o papel `super_admin`.
- * - Demais usuários ficam sem papel até que um admin os configure
- *   (acesso restrito até lá).
+ * Chamado logo após o cadastro inicial (base vazia). Garante que o PRIMEIRO
+ * usuário do sistema vire o super-usuário de PLATAFORMA (dono/controlador
+ * master), com acesso ao painel /admin e capacidade de impersonar clientes.
  *
- * É idempotente: se o usuário já tem papel, não faz nada.
+ * Em produção multi-tenant os usuários de clientes são criados pelo master,
+ * portanto este caminho só roda uma única vez, para o dono da plataforma.
+ *
+ * É idempotente: se já houver mais de um usuário, não faz nada.
  */
 export async function assignInitialRole(userId: string) {
-  // Já possui algum papel?
-  const existing = await db
-    .select({ id: userRoles.id })
-    .from(userRoles)
-    .where(eq(userRoles.userId, userId))
-  if (existing.length > 0) return
-
-  // Quantos usuários existem no total?
   const [{ value: totalUsers }] = await db
     .select({ value: count() })
     .from(userTable)
 
-  // Se este é o único usuário, ele vira super admin.
+  // Se este é o único usuário da base, ele se torna admin de plataforma.
   if (Number(totalUsers) <= 1) {
-    const [superRole] = await db
-      .select()
-      .from(appRoles)
-      .where(eq(appRoles.isSuperAdmin, true))
-      .limit(1)
-    if (superRole) {
-      await db
-        .insert(userRoles)
-        .values({ userId, roleId: superRole.id })
-        .onConflictDoNothing()
-    }
+    await db
+      .update(userTable)
+      .set({ isPlatformAdmin: true, tenantId: null })
+      .where(eq(userTable.id, userId))
   }
 }

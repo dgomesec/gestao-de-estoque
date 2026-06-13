@@ -51,8 +51,12 @@ export type ProductInput = {
 }
 
 export async function getProducts() {
-  await requirePermission('products', 'view')
-  return db.select().from(products).orderBy(desc(products.createdAt))
+  const ctx = await requirePermission('products', 'view')
+  return db
+    .select()
+    .from(products)
+    .where(eq(products.tenantId, ctx.tenantId))
+    .orderBy(desc(products.createdAt))
 }
 
 type ExistingProduct = typeof products.$inferSelect
@@ -76,12 +80,17 @@ function mergeProductValues(
   }
 }
 
-/** Procura um produto pelo nome, ignorando maiúsculas/minúsculas e espaços nas pontas. */
-async function findByName(name: string): Promise<ExistingProduct | undefined> {
+/** Procura um produto pelo nome (escopado ao tenant), ignorando caixa e espaços. */
+async function findByName(tenantId: string, name: string): Promise<ExistingProduct | undefined> {
   const [row] = await db
     .select()
     .from(products)
-    .where(sql`lower(trim(${products.name})) = ${name.trim().toLowerCase()}`)
+    .where(
+      and(
+        eq(products.tenantId, tenantId),
+        sql`lower(trim(${products.name})) = ${name.trim().toLowerCase()}`,
+      ),
+    )
     .limit(1)
   return row
 }
@@ -103,7 +112,7 @@ export async function createProduct(
   }
 
   // Deduplicação por nome: se já existir, faz o merge em vez de duplicar.
-  const duplicate = await findByName(input.name)
+  const duplicate = await findByName(ctx.tenantId, input.name)
   if (duplicate) {
     const merged = mergeProductValues(duplicate, input)
     const [updated] = await db
@@ -123,6 +132,7 @@ export async function createProduct(
     // Registra a entrada de estoque referente à quantidade somada.
     if (input.quantity > 0) {
       await db.insert(stockMovements).values({
+        tenantId: ctx.tenantId,
         productId: duplicate.id,
         type: 'in',
         quantity: input.quantity,
@@ -134,6 +144,7 @@ export async function createProduct(
     await logAudit({
       action: 'update',
       resource: 'products',
+      tenantId: ctx.tenantId,
       userId: ctx.user.id,
       userName: ctx.user.name,
       userEmail: ctx.user.email,
@@ -155,6 +166,7 @@ export async function createProduct(
   const [created] = await db
     .insert(products)
     .values({
+      tenantId: ctx.tenantId,
       sku: input.sku.trim(),
       name: input.name.trim(),
       description: input.description?.trim() || null,
@@ -172,6 +184,7 @@ export async function createProduct(
   // Registra a movimentação de entrada inicial, se houver quantidade.
   if (input.quantity > 0) {
     await db.insert(stockMovements).values({
+      tenantId: ctx.tenantId,
       productId: created.id,
       type: 'in',
       quantity: input.quantity,
@@ -183,6 +196,7 @@ export async function createProduct(
   await logAudit({
     action: 'create',
     resource: 'products',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -216,11 +230,12 @@ export async function updateProduct(id: number, input: ProductInput) {
       reorderLevel: input.reorderLevel,
       updatedAt: new Date(),
     })
-    .where(eq(products.id, id))
+    .where(and(eq(products.id, id), eq(products.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'update',
     resource: 'products',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -240,21 +255,28 @@ export async function deleteProduct(id: number) {
   const [{ value: salesCount }] = await db
     .select({ value: sql<number>`count(*)` })
     .from(sales)
-    .where(eq(sales.productId, id))
+    .where(and(eq(sales.productId, id), eq(sales.tenantId, ctx.tenantId)))
   if (Number(salesCount) > 0) {
     throw new Error(
       'Não é possível excluir: há vendas registradas para este produto',
     )
   }
 
-  const [existing] = await db.select().from(products).where(eq(products.id, id))
+  const [existing] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, id), eq(products.tenantId, ctx.tenantId)))
+  if (!existing) throw new Error('Produto não encontrado')
 
-  await db.delete(stockMovements).where(eq(stockMovements.productId, id))
-  await db.delete(products).where(eq(products.id, id))
+  await db
+    .delete(stockMovements)
+    .where(and(eq(stockMovements.productId, id), eq(stockMovements.tenantId, ctx.tenantId)))
+  await db.delete(products).where(and(eq(products.id, id), eq(products.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'delete',
     resource: 'products',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -284,14 +306,17 @@ export async function deleteProducts(ids: number[]): Promise<BulkDeleteResult> {
   const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isFinite(id))))
   if (uniqueIds.length === 0) return result
 
-  const rows = await db.select().from(products).where(inArray(products.id, uniqueIds))
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(inArray(products.id, uniqueIds), eq(products.tenantId, ctx.tenantId)))
   const byId = new Map(rows.map((p) => [p.id, p]))
 
   // Conta vendas por produto para bloquear exclusões que apagariam histórico.
   const salesRows = await db
     .select({ productId: sales.productId, value: sql<number>`count(*)` })
     .from(sales)
-    .where(inArray(sales.productId, uniqueIds))
+    .where(and(inArray(sales.productId, uniqueIds), eq(sales.tenantId, ctx.tenantId)))
     .groupBy(sales.productId)
   const salesByProduct = new Map(salesRows.map((r) => [r.productId, Number(r.value)]))
 
@@ -307,13 +332,18 @@ export async function deleteProducts(ids: number[]): Promise<BulkDeleteResult> {
   }
 
   if (deletableIds.length > 0) {
-    await db.delete(stockMovements).where(inArray(stockMovements.productId, deletableIds))
-    await db.delete(products).where(inArray(products.id, deletableIds))
+    await db
+      .delete(stockMovements)
+      .where(and(inArray(stockMovements.productId, deletableIds), eq(stockMovements.tenantId, ctx.tenantId)))
+    await db
+      .delete(products)
+      .where(and(inArray(products.id, deletableIds), eq(products.tenantId, ctx.tenantId)))
     result.deleted = deletableIds.length
 
     await logAudit({
       action: 'delete',
       resource: 'products',
+      tenantId: ctx.tenantId,
       userId: ctx.user.id,
       userName: ctx.user.name,
       userEmail: ctx.user.email,
@@ -368,8 +398,8 @@ export async function importProducts(
 
   const result: ImportResult = { imported: 0, merged: 0, skipped: 0, mergedNames: [], errors: [] }
 
-  // SKUs e nomes existentes para detectar duplicidade.
-  const existing = await db.select().from(products)
+  // SKUs e nomes existentes (do tenant) para detectar duplicidade.
+  const existing = await db.select().from(products).where(eq(products.tenantId, ctx.tenantId))
   const existingSkus = new Set(existing.map((p) => p.sku.toLowerCase()))
   const byName = new Map(existing.map((p) => [p.name.trim().toLowerCase(), p]))
 
@@ -427,6 +457,7 @@ export async function importProducts(
 
       if (quantity > 0) {
         await db.insert(stockMovements).values({
+          tenantId: ctx.tenantId,
           productId: dup.id,
           type: 'in',
           quantity,
@@ -450,6 +481,7 @@ export async function importProducts(
     const [created] = await db
       .insert(products)
       .values({
+        tenantId: ctx.tenantId,
         sku,
         name,
         description: row.description?.toString().trim() || null,
@@ -466,6 +498,7 @@ export async function importProducts(
 
     if (quantity > 0) {
       await db.insert(stockMovements).values({
+        tenantId: ctx.tenantId,
         productId: created.id,
         type: 'in',
         quantity,
@@ -482,6 +515,7 @@ export async function importProducts(
   await logAudit({
     action: 'create',
     resource: 'products',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,

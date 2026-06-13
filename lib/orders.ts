@@ -117,7 +117,9 @@ async function queryByColumn(column: "groupId" | "approvalToken", value: string)
     .where(eq(sales[column], value))
     .orderBy(asc(sales.id))
 
-  const settings = await getSettings()
+  // Recibo público: o tenant é derivado da própria venda encontrada.
+  const tenantId = rows[0]?.sale.tenantId ?? null
+  const settings = await getSettings(tenantId)
   const store: Order["store"] = {
     name: settings.storeName?.trim() || "Sua Loja",
     logoUrl: settings.storeLogoUrl,

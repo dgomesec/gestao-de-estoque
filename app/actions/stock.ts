@@ -4,11 +4,11 @@ import { db } from '@/lib/db'
 import { products, stockMovements } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
-import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 export async function getStockMovements(limit = 100) {
-  await requirePermission('stock', 'view')
+  const ctx = await requirePermission('stock', 'view')
   return db
     .select({
       id: stockMovements.id,
@@ -22,6 +22,7 @@ export async function getStockMovements(limit = 100) {
     })
     .from(stockMovements)
     .leftJoin(products, eq(stockMovements.productId, products.id))
+    .where(eq(stockMovements.tenantId, ctx.tenantId))
     .orderBy(desc(stockMovements.createdAt))
     .limit(limit)
 }
@@ -39,7 +40,7 @@ export async function registerMovement(input: {
   const [product] = await db
     .select()
     .from(products)
-    .where(eq(products.id, input.productId))
+    .where(and(eq(products.id, input.productId), eq(products.tenantId, ctx.tenantId)))
   if (!product) throw new Error('Produto não encontrado')
 
   if (input.type === 'out' && product.quantity < input.quantity) {
@@ -56,9 +57,10 @@ export async function registerMovement(input: {
       quantity: sql`${products.quantity} + ${delta}`,
       updatedAt: new Date(),
     })
-    .where(eq(products.id, input.productId))
+    .where(and(eq(products.id, input.productId), eq(products.tenantId, ctx.tenantId)))
 
   await db.insert(stockMovements).values({
+    tenantId: ctx.tenantId,
     productId: input.productId,
     type: input.type,
     quantity: input.quantity,
@@ -69,6 +71,7 @@ export async function registerMovement(input: {
   await logAudit({
     action: 'create',
     resource: 'stock',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -93,7 +96,10 @@ export async function registerMovements(input: {
 
   // Carrega os produtos envolvidos e valida antes de aplicar qualquer alteração.
   const ids = input.items.map((i) => i.productId)
-  const found = await db.select().from(products).where(inArray(products.id, ids))
+  const found = await db
+    .select()
+    .from(products)
+    .where(and(inArray(products.id, ids), eq(products.tenantId, ctx.tenantId)))
   const byId = new Map(found.map((p) => [p.id, p]))
 
   for (const item of input.items) {
@@ -116,9 +122,10 @@ export async function registerMovements(input: {
     await db
       .update(products)
       .set({ quantity: sql`${products.quantity} + ${delta}`, updatedAt: new Date() })
-      .where(eq(products.id, item.productId))
+      .where(and(eq(products.id, item.productId), eq(products.tenantId, ctx.tenantId)))
 
     await db.insert(stockMovements).values({
+      tenantId: ctx.tenantId,
       productId: item.productId,
       type: input.type,
       quantity: item.quantity,
@@ -129,6 +136,7 @@ export async function registerMovements(input: {
     await logAudit({
       action: 'create',
       resource: 'stock',
+      tenantId: ctx.tenantId,
       userId: ctx.user.id,
       userName: ctx.user.name,
       userEmail: ctx.user.email,

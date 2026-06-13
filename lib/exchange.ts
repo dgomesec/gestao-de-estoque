@@ -3,6 +3,17 @@ import 'server-only'
 import { db } from '@/lib/db'
 import { settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { getAuthContext } from '@/lib/rbac'
+
+/**
+ * Resolve o tenant efetivo para operações de configuração/câmbio. Aceita um
+ * tenantId explícito (ex.: recibo público) ou cai no contexto autenticado.
+ */
+async function resolveTenantId(explicit?: string | null): Promise<string | null> {
+  if (explicit) return explicit
+  const ctx = await getAuthContext()
+  return ctx?.tenantId ?? null
+}
 
 export type StoreInfo = {
   storeName: string | null
@@ -74,10 +85,14 @@ async function fetchLiveRate(): Promise<{ rate: number; source: string } | null>
 }
 
 /**
- * Lê as configurações (linha única id=1).
+ * Lê as configurações do tenant. Aceita um tenantId explícito (para contextos
+ * sem sessão, como o recibo público) ou resolve pelo usuário autenticado.
  */
-export async function getSettings(): Promise<Settings> {
-  const rows = await db.select().from(settings).where(eq(settings.id, 1))
+export async function getSettings(tenantId?: string | null): Promise<Settings> {
+  const tid = await resolveTenantId(tenantId)
+  const rows = tid
+    ? await db.select().from(settings).where(eq(settings.tenantId, tid))
+    : []
   const row = rows[0]
   if (!row) {
     return {
@@ -119,9 +134,12 @@ export async function getSettings(): Promise<Settings> {
  *
  * Passe `force = true` para forçar a atualização (ex.: botão "Atualizar agora").
  */
-export async function getEffectiveRate(force = false): Promise<Settings> {
-  const current = await getSettings()
+export async function getEffectiveRate(force = false, tenantId?: string | null): Promise<Settings> {
+  const tid = await resolveTenantId(tenantId)
+  const current = await getSettings(tid)
   if (current.manualRate) return current
+  // Sem tenant resolvido não há linha de settings para atualizar.
+  if (!tid) return current
 
   const lastChecked = current.rateCheckedAt?.getTime() ?? 0
   const isFresh = Date.now() - lastChecked < RATE_TTL_MS
@@ -132,7 +150,7 @@ export async function getEffectiveRate(force = false): Promise<Settings> {
 
   if (!live) {
     // API indisponível: apenas marca a tentativa, preserva o valor atual.
-    await db.update(settings).set({ rateCheckedAt: now }).where(eq(settings.id, 1))
+    await db.update(settings).set({ rateCheckedAt: now }).where(eq(settings.tenantId, tid))
     return { ...current, rateCheckedAt: now }
   }
 
@@ -144,7 +162,7 @@ export async function getEffectiveRate(force = false): Promise<Settings> {
       rateCheckedAt: now,
       rateSource: live.source,
     })
-    .where(eq(settings.id, 1))
+    .where(eq(settings.tenantId, tid))
 
   return {
     ...current,

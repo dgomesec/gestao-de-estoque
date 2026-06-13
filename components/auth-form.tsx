@@ -10,7 +10,13 @@ import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { Package } from 'lucide-react'
 
-export function AuthForm({ needsBootstrap }: { needsBootstrap: boolean }) {
+export function AuthForm({
+  needsBootstrap,
+  brand,
+}: {
+  needsBootstrap: boolean
+  brand: { name: string; logoUrl: string | null }
+}) {
   const router = useRouter()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -63,11 +69,19 @@ export function AuthForm({ needsBootstrap }: { needsBootstrap: boolean }) {
     <main className="min-h-svh bg-background flex items-center justify-center px-4">
       <Card className="w-full max-w-sm p-6">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Package className="size-6" aria-hidden="true" />
-          </div>
+          {brand.logoUrl ? (
+            <img
+              src={brand.logoUrl || "/placeholder.svg"}
+              alt={brand.name}
+              className="mb-3 size-12 rounded-xl object-contain"
+            />
+          ) : (
+            <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <Package className="size-6" aria-hidden="true" />
+            </div>
+          )}
           <h1 className="text-2xl font-semibold tracking-tight text-foreground text-balance">
-            EletroStock
+            {brand.name}
           </h1>
           <p className="text-sm text-muted-foreground mt-1 text-pretty">
             {isSignUp

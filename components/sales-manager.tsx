@@ -1298,7 +1298,7 @@ export function SalesManager({
           <DialogHeader>
             <DialogTitle>
               Editar cliente
-              {editCustomerFor ? ` · ${formatSaleCode(editCustomerFor.kind, editCustomerFor.id)}` : ""}
+              {editCustomerFor ? ` · ${formatSaleCode(editCustomerFor.kind, editCustomerFor.repId)}` : ""}
             </DialogTitle>
             <DialogDescription>
               Vincule um cliente cadastrado ou informe um nome avulso para este registro.

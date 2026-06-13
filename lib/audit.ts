@@ -26,6 +26,8 @@ export type AuditResource =
 type LogInput = {
   action: AuditAction
   resource: AuditResource
+  // Tenant ao qual o evento pertence (null para eventos de plataforma).
+  tenantId?: string | null
   userId?: string | null
   userName?: string | null
   userEmail?: string | null
@@ -113,6 +115,7 @@ export async function logAudit(input: LogInput): Promise<void> {
     await db.insert(auditLogs).values({
       action: input.action,
       resource: input.resource,
+      tenantId: input.tenantId ?? null,
       userId: input.userId ?? null,
       userName,
       userEmail,

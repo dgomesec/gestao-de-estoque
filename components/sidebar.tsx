@@ -20,6 +20,7 @@ import {
   LogOut,
   Menu,
   X,
+  ArrowLeft,
 } from 'lucide-react'
 
 type NavItem = { href: string; label: string; resource: string }
@@ -41,10 +42,14 @@ export function Sidebar({
   items,
   user,
   roleLabel,
+  brand,
+  isPlatformAdmin = false,
 }: {
   items: NavItem[]
   user: { name: string; email: string }
   roleLabel: string
+  brand: { name: string; logoUrl: string | null }
+  isPlatformAdmin?: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -68,10 +73,18 @@ export function Sidebar({
       {/* Top bar mobile */}
       <header className="md:hidden flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 text-sidebar-foreground">
         <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <Package className="size-4" aria-hidden="true" />
-          </div>
-          <span className="font-semibold">EletroStock</span>
+          {brand.logoUrl ? (
+            <img
+              src={brand.logoUrl || "/placeholder.svg"}
+              alt={brand.name}
+              className="size-8 rounded-lg object-contain"
+            />
+          ) : (
+            <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <Package className="size-4" aria-hidden="true" />
+            </div>
+          )}
+          <span className="font-semibold">{brand.name}</span>
         </div>
         <Button
           variant="ghost"
@@ -94,11 +107,19 @@ export function Sidebar({
         )}
       >
         <div className="hidden md:flex items-center gap-2 px-5 py-5 border-b border-sidebar-border">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <Package className="size-5" aria-hidden="true" />
-          </div>
+          {brand.logoUrl ? (
+            <img
+              src={brand.logoUrl || "/placeholder.svg"}
+              alt={brand.name}
+              className="size-9 rounded-lg object-contain"
+            />
+          ) : (
+            <div className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <Package className="size-5" aria-hidden="true" />
+            </div>
+          )}
           <div className="flex flex-col leading-tight">
-            <span className="font-semibold">EletroStock</span>
+            <span className="font-semibold">{brand.name}</span>
             <span className="text-xs text-sidebar-foreground/60">
               Gestão de estoque
             </span>
@@ -133,6 +154,16 @@ export function Sidebar({
         </nav>
 
         <div className="border-t border-sidebar-border p-3">
+          {isPlatformAdmin && (
+            <Link
+              href="/admin"
+              onClick={() => setOpen(false)}
+              className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+              Painel master
+            </Link>
+          )}
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
             <div className="flex size-9 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground text-sm font-medium">
               {initials || '?'}

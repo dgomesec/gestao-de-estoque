@@ -1,14 +1,49 @@
 import { pgTable, text, timestamp, boolean, serial, integer, numeric, uniqueIndex } from "drizzle-orm/pg-core"
 
+// --- Multi-tenancy ----------------------------------------------------------
+// Cada cliente (empresa) é um "tenant". Todos os dados de negócio carregam um
+// `tenantId` para isolamento lógico no mesmo banco. O painel master (super-
+// usuário de plataforma) gerencia todos os tenants; cada tenant tem seu próprio
+// branding (logo/nome/paleta) e um conjunto de funcionalidades ligáveis.
+export const tenants = pgTable("tenants", {
+  // ID do cliente (usado para deleção/modificações específicas e impersonação).
+  id: text("id").primaryKey(),
+  // Slug usado no subdomínio (ex.: "techbless" -> techbless.dominio.com).
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  // "active" | "suspended"
+  status: text("status").notNull().default("active"),
+  // --- Branding (aplicado em runtime via CSS variables) ---
+  brandName: text("brandName"),
+  logoUrl: text("logoUrl"),
+  colorPrimary: text("colorPrimary"),
+  colorPrimaryForeground: text("colorPrimaryForeground"),
+  colorAccent: text("colorAccent"),
+  colorAccentForeground: text("colorAccentForeground"),
+  colorBackground: text("colorBackground"),
+  colorForeground: text("colorForeground"),
+  // Mapa JSON de funcionalidades habilitadas por recurso, ex.:
+  // {"products":true,"users":false,...}. Vazio = todas habilitadas.
+  features: text("features").notNull().default("{}"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
 // --- Better Auth required tables -------------------------------------------
 // Column names are camelCase to match Better Auth's defaults. Do not rename.
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  // E-mail é único globalmente (uma pessoa = uma conta). O vínculo de tenant é
+  // feito por `tenantId`; super-usuários de plataforma têm `tenantId` nulo.
   email: text("email").notNull().unique(),
   emailVerified: boolean("emailVerified").notNull().default(false),
   image: text("image"),
+  // Tenant ao qual o usuário pertence (null = super-usuário de plataforma).
+  tenantId: text("tenantId"),
+  // Super-usuário de plataforma: acessa o painel master e pode impersonar.
+  isPlatformAdmin: boolean("isPlatformAdmin").notNull().default(false),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
@@ -57,16 +92,25 @@ export const verification = pgTable("verification", {
 // Roles are shared business entities (not per-user). Access is gated by the
 // permissions attached to the role(s) a user holds.
 
-export const appRoles = pgTable("app_roles", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  description: text("description"),
-  // System roles (super_admin, administrativo, vendas) cannot be deleted.
-  isSystem: boolean("isSystem").notNull().default(false),
-  // super_admin bypasses all permission checks.
-  isSuperAdmin: boolean("isSuperAdmin").notNull().default(false),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-})
+export const appRoles = pgTable(
+  "app_roles",
+  {
+    id: serial("id").primaryKey(),
+    // Tenant dono do papel. Papéis são isolados por cliente.
+    tenantId: text("tenantId").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    // System roles (super_admin, administrativo, vendas) cannot be deleted.
+    isSystem: boolean("isSystem").notNull().default(false),
+    // super_admin bypasses all permission checks (dentro do próprio tenant).
+    isSuperAdmin: boolean("isSuperAdmin").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (t) => ({
+    // Nome único por tenant (não globalmente).
+    uniq: uniqueIndex("app_roles_tenant_name_uniq").on(t.tenantId, t.name),
+  }),
+)
 
 // One row per (role, resource, action) that is granted.
 // resource: products | stock | sales | users | roles | reports | settings
@@ -88,6 +132,8 @@ export const userRoles = pgTable(
   "user_roles",
   {
     id: serial("id").primaryKey(),
+    // Tenant ao qual o vínculo pertence (escopo direto, sem join).
+    tenantId: text("tenantId").notNull(),
     userId: text("userId").notNull(),
     roleId: integer("roleId").notNull(),
   },
@@ -98,9 +144,12 @@ export const userRoles = pgTable(
 
 // --- Inventory --------------------------------------------------------------
 
-export const products = pgTable("products", {
+export const products = pgTable(
+  "products",
+  {
   id: serial("id").primaryKey(),
-  sku: text("sku").notNull().unique(),
+  tenantId: text("tenantId").notNull(),
+  sku: text("sku").notNull(),
   name: text("name").notNull(),
   description: text("description"),
   // Cor do produto. Para um único produto, o rótulo em português (ex.: "Azul").
@@ -123,11 +172,17 @@ export const products = pgTable("products", {
   createdBy: text("createdBy").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-})
+  },
+  (t) => ({
+    // SKU único por tenant (não globalmente).
+    skuUniq: uniqueIndex("products_tenant_sku_uniq").on(t.tenantId, t.sku),
+  }),
+)
 
 // Generic stock entries/exits (purchases, restocks, adjustments, losses).
 export const stockMovements = pgTable("stock_movements", {
   id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
   productId: integer("productId").notNull(),
   type: text("type").notNull(), // "in" | "out"
   quantity: integer("quantity").notNull(),
@@ -141,6 +196,7 @@ export const stockMovements = pgTable("stock_movements", {
 // Quotes reserve stock until converted into a sale or cancelled.
 export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
   productId: integer("productId").notNull(),
   quantity: integer("quantity").notNull(),
   // "sale" = venda finalizada | "quote" = orçamento (reserva estoque)
@@ -174,6 +230,7 @@ export const sales = pgTable("sales", {
 // --- Clientes ---------------------------------------------------------------
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
   name: text("name").notNull(),
   phone: text("phone"),
   email: text("email"),
@@ -190,19 +247,29 @@ export const customers = pgTable("customers", {
 
 // --- Metas mensais de vendas (globais) --------------------------------------
 // Uma linha por mês (formato "YYYY-MM"). Acompanha receita e lucro.
-export const salesGoals = pgTable("sales_goals", {
-  id: serial("id").primaryKey(),
-  month: text("month").notNull().unique(), // "2026-06"
-  revenueTargetBrl: numeric("revenueTargetBrl", { precision: 14, scale: 2 }).notNull().default("0"),
-  profitTargetBrl: numeric("profitTargetBrl", { precision: 14, scale: 2 }).notNull().default("0"),
-  createdBy: text("createdBy").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-})
+export const salesGoals = pgTable(
+  "sales_goals",
+  {
+    id: serial("id").primaryKey(),
+    tenantId: text("tenantId").notNull(),
+    month: text("month").notNull(), // "2026-06"
+    revenueTargetBrl: numeric("revenueTargetBrl", { precision: 14, scale: 2 }).notNull().default("0"),
+    profitTargetBrl: numeric("profitTargetBrl", { precision: 14, scale: 2 }).notNull().default("0"),
+    createdBy: text("createdBy").notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (t) => ({
+    // Uma meta por mês, por tenant.
+    monthUniq: uniqueIndex("sales_goals_tenant_month_uniq").on(t.tenantId, t.month),
+  }),
+)
 
-// Singleton settings row (id = 1).
+// Configurações por tenant (uma linha por cliente).
 export const settings = pgTable("settings", {
-  id: integer("id").primaryKey().default(1),
+  id: serial("id").primaryKey(),
+  // Tenant dono destas configurações (uma linha por tenant).
+  tenantId: text("tenantId").notNull().unique(),
   // Current USD -> BRL exchange rate used for cost calculations.
   exchangeRate: numeric("exchangeRate", { precision: 10, scale: 4 }).notNull().default("5"),
   // When true, the rate is locked to a manual value (not auto-updated).
@@ -227,6 +294,8 @@ export const settings = pgTable("settings", {
 // of products, users, roles, sales, stock and settings.
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
+  // Tenant ao qual o evento pertence (null para eventos de plataforma).
+  tenantId: text("tenantId"),
   // Who performed the action (may be null for failed logins).
   userId: text("userId"),
   userName: text("userName"),

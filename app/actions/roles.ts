@@ -5,7 +5,7 @@ import { appRoles, rolePermissions, userRoles } from "@/lib/db/schema"
 import { requirePermission } from "@/lib/rbac"
 import { logAudit } from "@/lib/audit"
 import { RESOURCES, ACTIONS, type Permission } from "@/lib/constants"
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 export type RoleRow = {
@@ -22,11 +22,19 @@ const VALID_RESOURCES = new Set(RESOURCES.map((r) => r.key))
 const VALID_ACTIONS = new Set(ACTIONS.map((a) => a.key))
 
 export async function getRoles(): Promise<RoleRow[]> {
-  await requirePermission("roles", "view")
+  const ctx = await requirePermission("roles", "view")
 
-  const roles = await db.select().from(appRoles).orderBy(asc(appRoles.id))
-  const perms = await db.select().from(rolePermissions)
-  const links = await db.select().from(userRoles)
+  const roles = await db
+    .select()
+    .from(appRoles)
+    .where(eq(appRoles.tenantId, ctx.tenantId))
+    .orderBy(asc(appRoles.id))
+  const roleIds = roles.map((r) => r.id)
+  // rolePermissions herdam o escopo via roleId (que já é por tenant).
+  const perms = roleIds.length
+    ? await db.select().from(rolePermissions).where(inArray(rolePermissions.roleId, roleIds))
+    : []
+  const links = await db.select().from(userRoles).where(eq(userRoles.tenantId, ctx.tenantId))
 
   return roles.map((r) => ({
     id: r.id,
@@ -53,13 +61,20 @@ export async function createRole(input: {
 
   const inserted = await db
     .insert(appRoles)
-    .values({ name, description: input.description.trim() || null, isSystem: false, isSuperAdmin: false })
+    .values({
+      tenantId: ctx.tenantId,
+      name,
+      description: input.description.trim() || null,
+      isSystem: false,
+      isSuperAdmin: false,
+    })
     .returning()
 
   await replacePermissions(inserted[0].id, input.permissions)
   await logAudit({
     action: "create",
     resource: "roles",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -74,7 +89,10 @@ export async function createRole(input: {
 export async function updateRolePermissions(roleId: number, permissions: Permission[]) {
   const ctx = await requirePermission("roles", "update")
 
-  const target = await db.select().from(appRoles).where(eq(appRoles.id, roleId))
+  const target = await db
+    .select()
+    .from(appRoles)
+    .where(and(eq(appRoles.id, roleId), eq(appRoles.tenantId, ctx.tenantId)))
   if (!target[0]) throw new Error("Papel não encontrado")
   if (target[0].isSuperAdmin) {
     throw new Error("O papel Super Admin possui acesso total e não é editável")
@@ -84,6 +102,7 @@ export async function updateRolePermissions(roleId: number, permissions: Permiss
   await logAudit({
     action: "update",
     resource: "roles",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -98,7 +117,10 @@ export async function updateRolePermissions(roleId: number, permissions: Permiss
 export async function updateRoleInfo(roleId: number, input: { name: string; description: string }) {
   const ctx = await requirePermission("roles", "update")
 
-  const target = await db.select().from(appRoles).where(eq(appRoles.id, roleId))
+  const target = await db
+    .select()
+    .from(appRoles)
+    .where(and(eq(appRoles.id, roleId), eq(appRoles.tenantId, ctx.tenantId)))
   if (!target[0]) throw new Error("Papel não encontrado")
   if (target[0].isSystem) {
     throw new Error("Papéis do sistema não podem ser renomeados")
@@ -107,10 +129,11 @@ export async function updateRoleInfo(roleId: number, input: { name: string; desc
   await db
     .update(appRoles)
     .set({ name: input.name.trim(), description: input.description.trim() || null })
-    .where(eq(appRoles.id, roleId))
+    .where(and(eq(appRoles.id, roleId), eq(appRoles.tenantId, ctx.tenantId)))
   await logAudit({
     action: "update",
     resource: "roles",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -124,18 +147,24 @@ export async function updateRoleInfo(roleId: number, input: { name: string; desc
 export async function deleteRole(roleId: number) {
   const ctx = await requirePermission("roles", "delete")
 
-  const target = await db.select().from(appRoles).where(eq(appRoles.id, roleId))
+  const target = await db
+    .select()
+    .from(appRoles)
+    .where(and(eq(appRoles.id, roleId), eq(appRoles.tenantId, ctx.tenantId)))
   if (!target[0]) throw new Error("Papel não encontrado")
   if (target[0].isSystem) {
     throw new Error("Papéis do sistema não podem ser excluídos")
   }
 
   await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId))
-  await db.delete(userRoles).where(eq(userRoles.roleId, roleId))
-  await db.delete(appRoles).where(eq(appRoles.id, roleId))
+  await db
+    .delete(userRoles)
+    .where(and(eq(userRoles.roleId, roleId), eq(userRoles.tenantId, ctx.tenantId)))
+  await db.delete(appRoles).where(and(eq(appRoles.id, roleId), eq(appRoles.tenantId, ctx.tenantId)))
   await logAudit({
     action: "delete",
     resource: "roles",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
