@@ -36,6 +36,17 @@ import {
 import { Trash2, UserPlus, LogIn } from 'lucide-react'
 import { impersonateTenant } from '@/app/actions/platform'
 
+// Detecta o "erro" especial lançado por `redirect()` em Server Actions.
+function isRedirectError(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'digest' in e &&
+    typeof (e as { digest?: unknown }).digest === 'string' &&
+    (e as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+  )
+}
+
 type TenantData = {
   id: string
   slug: string
@@ -88,6 +99,8 @@ export function TenantEditor({
                 try {
                   await impersonateTenant(tenant.slug)
                 } catch (e) {
+                  // `redirect()` lança NEXT_REDIRECT — não é erro, re-lança.
+                  if (isRedirectError(e)) throw e
                   toast.error(e instanceof Error ? e.message : 'Erro ao acessar')
                 }
               })

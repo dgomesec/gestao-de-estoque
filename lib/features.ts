@@ -6,9 +6,13 @@ import type { tenants } from '@/lib/db/schema'
 
 export type Tenant = typeof tenants.$inferSelect
 
-// Tenant padrão usado em ambientes sem subdomínio (preview/local), para manter
-// a aplicação single-tenant existente (TechBless) funcionando sem configuração.
-export const DEFAULT_TENANT_SLUG = process.env.NEXT_PUBLIC_DEFAULT_TENANT_SLUG ?? 'techbless'
+// Tenant padrão OPCIONAL. Por padrão é `null`: nenhum cliente é assumido quando
+// não há subdomínio nem impersonação ativa. Isso garante isolamento real — um
+// super-usuário de plataforma sem cliente selecionado vai ao painel master, e
+// nunca "cai" silenciosamente no console de um cliente específico.
+// Só defina NEXT_PUBLIC_DEFAULT_TENANT_SLUG em deploys single-tenant dedicados.
+export const DEFAULT_TENANT_SLUG: string | null =
+  process.env.NEXT_PUBLIC_DEFAULT_TENANT_SLUG ?? null
 
 // Nomes de header/cookie usados na resolução do tenant (vide middleware.ts).
 export const TENANT_SLUG_HEADER = 'x-tenant-slug'

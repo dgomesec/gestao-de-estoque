@@ -32,10 +32,14 @@ export {
 /**
  * Resolve o slug do tenant da requisição atual. A ordem de prioridade é:
  * 1. Header `x-tenant-slug` (definido pelo middleware a partir do subdomínio).
- * 2. Cookie `tenant` (impersonação pelo painel master / fallback de preview).
- * 3. Slug padrão (mantém o preview single-tenant funcionando).
+ * 2. Cookie `tenant` (impersonação explícita pelo painel master).
+ * 3. Slug padrão APENAS se `NEXT_PUBLIC_DEFAULT_TENANT_SLUG` estiver definido
+ *    (deploy single-tenant dedicado). Caso contrário, retorna `null`.
+ *
+ * Retornar `null` é intencional: sem subdomínio nem impersonação ativa, nenhum
+ * cliente é assumido — o super-usuário de plataforma é levado ao painel master.
  */
-export async function resolveTenantSlug(): Promise<string> {
+export async function resolveTenantSlug(): Promise<string | null> {
   const h = await headers()
   const fromHeader = h.get(TENANT_SLUG_HEADER)
   if (fromHeader) return fromHeader
@@ -62,6 +66,7 @@ export async function isPlatformPortal(): Promise<boolean> {
  */
 export async function getActiveTenant(): Promise<Tenant | null> {
   const slug = await resolveTenantSlug()
+  if (!slug) return null
   return getTenantBySlug(slug)
 }
 
