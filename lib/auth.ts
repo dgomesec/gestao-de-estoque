@@ -21,6 +21,27 @@ export const auth = betterAuth({
     ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
     ...(process.env.VERCEL_PROJECT_PRODUCTION_URL ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`] : []),
+    // Domínio(s) personalizado(s) de produção. O cliente acessa pelo domínio
+    // próprio (não pelo *.vercel.app), então ele PRECISA constar aqui ou o
+    // Better Auth recusa o login com "invalid origin".
+    "https://rareon.com.br",
+    "https://www.rareon.com.br",
+    // Curinga para subdomínios por cliente (ex.: ecsfish.rareon.com.br) caso
+    // sejam ativados no futuro.
+    "https://*.rareon.com.br",
+    // Domínio raiz configurável via env, para portar a app para outro domínio
+    // sem alterar código. Aceita lista separada por vírgula em ROOT_DOMAINS
+    // e/ou um domínio único em NEXT_PUBLIC_ROOT_DOMAIN.
+    ...(process.env.NEXT_PUBLIC_ROOT_DOMAIN
+      ? [
+          `https://${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`,
+          `https://www.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`,
+          `https://*.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`,
+        ]
+      : []),
+    ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS
+      ? process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+      : []),
     ...(process.env.NODE_ENV === "development"
       ? ["http://localhost:3000", "http://127.0.0.1:3000"]
       : []),
