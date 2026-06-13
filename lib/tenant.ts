@@ -4,41 +4,30 @@ import { headers, cookies } from 'next/headers'
 import { db } from '@/lib/db'
 import { tenants } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import type { ResourceKey } from '@/lib/constants'
+import type { Tenant } from '@/lib/features'
+import {
+  DEFAULT_TENANT_SLUG,
+  TENANT_SLUG_HEADER,
+  PORTAL_HEADER,
+  TENANT_COOKIE,
+  PORTAL_COOKIE,
+} from '@/lib/features'
 
-export type Tenant = typeof tenants.$inferSelect
-
-// Tenant padrão usado em ambientes sem subdomínio (preview/local), para manter
-// a aplicação single-tenant existente (TechBless) funcionando sem configuração.
-export const DEFAULT_TENANT_SLUG = process.env.DEFAULT_TENANT_SLUG ?? 'techbless'
-
-// Nomes de header/cookie usados na resolução do tenant (vide middleware.ts).
-export const TENANT_SLUG_HEADER = 'x-tenant-slug'
-export const PORTAL_HEADER = 'x-portal'
-export const TENANT_COOKIE = 'tenant'
-export const PORTAL_COOKIE = 'portal'
-
-/**
- * Recursos que NÃO são funcionalidades ligáveis pelo painel master — o núcleo
- * operacional (dashboard/relatórios) permanece sempre disponível. As demais
- * (gestão de usuários, papéis, auditoria, etc.) podem ser ativadas/desativadas
- * por cliente.
- */
-export const ALWAYS_ON_FEATURES: ResourceKey[] = ['reports']
-
-/**
- * Recursos que podem ser ativados/desativados por cliente no painel master.
- */
-export const TOGGLEABLE_FEATURES: ResourceKey[] = [
-  'products',
-  'stock',
-  'sales',
-  'customers',
-  'users',
-  'roles',
-  'settings',
-  'audit',
-]
+// Reexporta os helpers/constantes client-safe de features para que os callers
+// server-side existentes possam continuar importando de '@/lib/tenant'.
+export type { Tenant }
+export {
+  DEFAULT_TENANT_SLUG,
+  TENANT_SLUG_HEADER,
+  PORTAL_HEADER,
+  TENANT_COOKIE,
+  PORTAL_COOKIE,
+  ALWAYS_ON_FEATURES,
+  TOGGLEABLE_FEATURES,
+  parseFeatures,
+  isFeatureEnabled,
+  enabledFeatureSet,
+} from '@/lib/features'
 
 /**
  * Resolve o slug do tenant da requisição atual. A ordem de prioridade é:
@@ -84,47 +73,4 @@ export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
 export async function getTenantById(id: string): Promise<Tenant | null> {
   const [t] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1)
   return t ?? null
-}
-
-/**
- * Converte o JSON de funcionalidades do tenant em um mapa. Entradas ausentes
- * significam "habilitado" (opt-out): só desativamos o que estiver explicitamente
- * marcado como `false`.
- */
-export function parseFeatures(raw: string | null | undefined): Record<string, boolean> {
-  if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, boolean>) : {}
-  } catch {
-    return {}
-  }
-}
-
-/**
- * Indica se uma funcionalidade (recurso) está habilitada para o tenant.
- * Recursos sempre ativos e qualquer recurso não explicitamente desativado
- * retornam true.
- */
-export function isFeatureEnabled(
-  tenant: Pick<Tenant, 'features'> | null | undefined,
-  resource: ResourceKey,
-): boolean {
-  if (ALWAYS_ON_FEATURES.includes(resource)) return true
-  if (!tenant) return true
-  const map = parseFeatures(tenant.features)
-  return map[resource] !== false
-}
-
-/**
- * Conjunto de funcionalidades habilitadas do tenant (para uso no cliente/nav).
- */
-export function enabledFeatureSet(
-  tenant: Pick<Tenant, 'features'> | null | undefined,
-): Set<ResourceKey> {
-  const set = new Set<ResourceKey>(ALWAYS_ON_FEATURES)
-  for (const r of TOGGLEABLE_FEATURES) {
-    if (isFeatureEnabled(tenant, r)) set.add(r)
-  }
-  return set
 }

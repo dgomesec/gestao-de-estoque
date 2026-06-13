@@ -11,7 +11,7 @@ import {
   bulkToggleFeature,
   type TenantRow,
 } from '@/app/actions/platform'
-import { TOGGLEABLE_FEATURES } from '@/lib/tenant'
+import { TOGGLEABLE_FEATURES } from '@/lib/features'
 import { RESOURCE_LABELS, type ResourceKey } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
