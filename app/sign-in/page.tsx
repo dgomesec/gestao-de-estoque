@@ -17,7 +17,9 @@ export default async function SignInPage() {
     getActiveTenant(),
   ])
 
-  const brandName = tenant?.brandName?.trim() || tenant?.name || 'EletroStock'
+  // Sem tenant resolvido (domínio base/master), usa um nome neutro — nunca a
+  // marca de um cliente específico.
+  const brandName = tenant?.brandName?.trim() || tenant?.name || 'Gestão de Estoque'
 
   return (
     <>

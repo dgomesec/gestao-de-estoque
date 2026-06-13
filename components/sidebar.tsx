@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { authClient } from '@/lib/auth-client'
+import { stopImpersonation } from '@/app/actions/platform'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -155,14 +156,16 @@ export function Sidebar({
 
         <div className="border-t border-sidebar-border p-3">
           {isPlatformAdmin && (
-            <Link
-              href="/admin"
-              onClick={() => setOpen(false)}
-              className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            >
-              <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
-              Painel master
-            </Link>
+            <form action={stopImpersonation}>
+              <button
+                type="submit"
+                onClick={() => setOpen(false)}
+                className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+                Painel master
+              </button>
+            </form>
           )}
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
             <div className="flex size-9 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground text-sm font-medium">

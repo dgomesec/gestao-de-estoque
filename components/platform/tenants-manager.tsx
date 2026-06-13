@@ -36,6 +36,18 @@ import {
 } from '@/components/ui/select'
 import { Plus, Search, LogIn, Settings2, Building2 } from 'lucide-react'
 
+// Detecta o "erro" especial lançado por `redirect()` em Server Actions, para
+// que ele não seja tratado como falha (re-lançado para o Next concluir a navegação).
+function isRedirectError(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'digest' in e &&
+    typeof (e as { digest?: unknown }).digest === 'string' &&
+    (e as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+  )
+}
+
 export function TenantsManager({ tenants }: { tenants: TenantRow[] }) {
   const router = useRouter()
   const [query, setQuery] = useState('')
@@ -73,6 +85,8 @@ export function TenantsManager({ tenants }: { tenants: TenantRow[] }) {
       try {
         await impersonateTenant(slug)
       } catch (e) {
+        // `redirect()` dentro do server action lança NEXT_REDIRECT — não é erro.
+        if (isRedirectError(e)) throw e
         toast.error(e instanceof Error ? e.message : 'Erro ao acessar o cliente')
       }
     })
@@ -210,6 +224,7 @@ export function TenantsManager({ tenants }: { tenants: TenantRow[] }) {
                     </Button>
                     <Button
                       render={<Link href={`/admin/${t.id}`} />}
+                      nativeButton={false}
                       size="sm"
                       variant="ghost"
                     >
