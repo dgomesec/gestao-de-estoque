@@ -1,5 +1,7 @@
 import { betterAuth } from "better-auth"
-import { pool } from "@/lib/db"
+import { pool, db } from "@/lib/db"
+import { user as userTable } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { logAudit } from "@/lib/audit"
 
 export const auth = betterAuth({
@@ -32,9 +34,14 @@ export const auth = betterAuth({
       create: {
         // Registra cada login (criação de sessão) na auditoria.
         after: async (session) => {
+          const [u] = await db
+            .select({ tenantId: userTable.tenantId })
+            .from(userTable)
+            .where(eq(userTable.id, session.userId))
           await logAudit({
             action: "login",
             resource: "auth",
+            tenantId: u?.tenantId ?? null,
             userId: session.userId,
             summary: "Login realizado",
           })

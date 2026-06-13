@@ -31,9 +31,12 @@ export type GoalProgress = {
  * Retorna a meta de um mês com o progresso real (vendas finalizadas).
  */
 export async function getGoalProgress(month = currentMonth()): Promise<GoalProgress> {
-  await requirePermission('reports', 'view')
+  const ctx = await requirePermission('reports', 'view')
 
-  const [goal] = await db.select().from(salesGoals).where(eq(salesGoals.month, month))
+  const [goal] = await db
+    .select()
+    .from(salesGoals)
+    .where(and(eq(salesGoals.tenantId, ctx.tenantId), eq(salesGoals.month, month)))
   const { start, end } = monthRange(month)
 
   const [agg] = await db
@@ -44,6 +47,7 @@ export async function getGoalProgress(month = currentMonth()): Promise<GoalProgr
     .from(sales)
     .where(
       and(
+        eq(sales.tenantId, ctx.tenantId),
         eq(sales.kind, 'sale'),
         gte(sales.createdAt, start),
         lte(sales.createdAt, end),
@@ -100,13 +104,15 @@ export async function setGoal(input: {
   await db
     .insert(salesGoals)
     .values({
+      tenantId: ctx.tenantId,
       month: input.month,
       revenueTargetBrl: String(revenue),
       profitTargetBrl: String(profit),
       createdBy: ctx.user.id,
     })
     .onConflictDoUpdate({
-      target: salesGoals.month,
+      // Unicidade composta (tenantId, month) garante uma meta por mês/tenant.
+      target: [salesGoals.tenantId, salesGoals.month],
       set: {
         revenueTargetBrl: String(revenue),
         profitTargetBrl: String(profit),
@@ -117,6 +123,7 @@ export async function setGoal(input: {
   await logAudit({
     action: 'update',
     resource: 'settings',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -135,14 +142,20 @@ export async function deleteGoal(month: string) {
 
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Mês inválido (use AAAA-MM)')
 
-  const [existing] = await db.select().from(salesGoals).where(eq(salesGoals.month, month))
+  const [existing] = await db
+    .select()
+    .from(salesGoals)
+    .where(and(eq(salesGoals.tenantId, ctx.tenantId), eq(salesGoals.month, month)))
   if (!existing) throw new Error('Nenhuma meta definida para este mês')
 
-  await db.delete(salesGoals).where(eq(salesGoals.month, month))
+  await db
+    .delete(salesGoals)
+    .where(and(eq(salesGoals.tenantId, ctx.tenantId), eq(salesGoals.month, month)))
 
   await logAudit({
     action: 'delete',
     resource: 'settings',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
