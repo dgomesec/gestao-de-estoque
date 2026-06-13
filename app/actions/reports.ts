@@ -31,13 +31,13 @@ function daysAgo(n: number) {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  await requirePermission("reports", "view")
+  const ctx = await requirePermission("reports", "view")
 
   const settings = await getEffectiveRate()
   const rate = settings.exchangeRate
   const protectionPct = settings.currencyProtectionPct
 
-  const allProducts = await db.select().from(products)
+  const allProducts = await db.select().from(products).where(eq(products.tenantId, ctx.tenantId))
   const totalProducts = allProducts.length
   const totalUnits = allProducts.reduce((s, p) => s + p.quantity, 0)
   const stockValueUsd = allProducts.reduce((s, p) => s + Number(p.priceUsd) * p.quantity, 0)
@@ -59,7 +59,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const recentSales = await db
     .select()
     .from(sales)
-    .where(and(gte(sales.createdAt, since), eq(sales.kind, "sale")))
+    .where(and(eq(sales.tenantId, ctx.tenantId), gte(sales.createdAt, since), eq(sales.kind, "sale")))
 
   const salesCount30d = recentSales.length
   const revenueBrl30d = recentSales.reduce((s, r) => s + Number(r.totalBrl), 0)
@@ -140,10 +140,10 @@ export type SalesReport = {
 }
 
 export async function getSalesReport(days: number): Promise<SalesReport> {
-  await requirePermission("reports", "view")
+  const ctx = await requirePermission("reports", "view")
 
   const since = daysAgo(days)
-  return buildSalesReport(since, null)
+  return buildSalesReport(ctx.tenantId, since, null)
 }
 
 /**
@@ -151,7 +151,7 @@ export async function getSalesReport(days: number): Promise<SalesReport> {
  * `from` e `to` no formato "YYYY-MM-DD". `to` é inclusivo (até o fim do dia).
  */
 export async function getSalesReportByRange(from: string, to: string): Promise<SalesReport> {
-  await requirePermission("reports", "view")
+  const ctx = await requirePermission("reports", "view")
 
   const start = new Date(`${from}T00:00:00`)
   const end = new Date(`${to}T23:59:59.999`)
@@ -160,13 +160,13 @@ export async function getSalesReportByRange(from: string, to: string): Promise<S
   }
   if (start > end) throw new Error("A data inicial não pode ser maior que a final")
 
-  return buildSalesReport(start, end)
+  return buildSalesReport(ctx.tenantId, start, end)
 }
 
-async function buildSalesReport(start: Date, end: Date | null): Promise<SalesReport> {
+async function buildSalesReport(tenantId: string, start: Date, end: Date | null): Promise<SalesReport> {
   const condition = end
-    ? and(eq(sales.kind, "sale"), gte(sales.createdAt, start), lte(sales.createdAt, end))
-    : and(eq(sales.kind, "sale"), gte(sales.createdAt, start))
+    ? and(eq(sales.tenantId, tenantId), eq(sales.kind, "sale"), gte(sales.createdAt, start), lte(sales.createdAt, end))
+    : and(eq(sales.tenantId, tenantId), eq(sales.kind, "sale"), gte(sales.createdAt, start))
 
   const rows = await db
     .select({

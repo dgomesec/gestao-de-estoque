@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { customers, sales } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 export type CustomerInput = {
@@ -39,7 +39,7 @@ export type CustomerWithStats = {
  * Lista clientes com estatísticas de compras (apenas vendas finalizadas).
  */
 export async function getCustomers(): Promise<CustomerWithStats[]> {
-  await requirePermission('customers', 'view')
+  const ctx = await requirePermission('customers', 'view')
 
   const rows = await db
     .select({
@@ -58,7 +58,8 @@ export async function getCustomers(): Promise<CustomerWithStats[]> {
       totalSpentBrl: sql<number>`coalesce(sum(${sales.totalBrl}) filter (where ${sales.kind} = 'sale'), 0)`,
     })
     .from(customers)
-    .leftJoin(sales, eq(sales.customerId, customers.id))
+    .leftJoin(sales, and(eq(sales.customerId, customers.id), eq(sales.tenantId, ctx.tenantId)))
+    .where(eq(customers.tenantId, ctx.tenantId))
     .groupBy(customers.id)
     .orderBy(desc(customers.createdAt))
 
@@ -97,12 +98,13 @@ export async function createCustomer(input: CustomerInput) {
 
   const [created] = await db
     .insert(customers)
-    .values({ ...clean(input), createdBy: ctx.user.id })
+    .values({ ...clean(input), tenantId: ctx.tenantId, createdBy: ctx.user.id })
     .returning()
 
   await logAudit({
     action: 'create',
     resource: 'customers',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -122,11 +124,12 @@ export async function updateCustomer(id: number, input: CustomerInput) {
   await db
     .update(customers)
     .set({ ...clean(input), updatedAt: new Date() })
-    .where(eq(customers.id, id))
+    .where(and(eq(customers.id, id), eq(customers.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'update',
     resource: 'customers',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -145,19 +148,24 @@ export async function deleteCustomer(id: number) {
   const [{ value: linked }] = await db
     .select({ value: sql<number>`count(*)` })
     .from(sales)
-    .where(eq(sales.customerId, id))
+    .where(and(eq(sales.customerId, id), eq(sales.tenantId, ctx.tenantId)))
   if (Number(linked) > 0) {
     throw new Error(
       'Não é possível excluir: há vendas ou orçamentos vinculados a este cliente',
     )
   }
 
-  const [existing] = await db.select().from(customers).where(eq(customers.id, id))
-  await db.delete(customers).where(eq(customers.id, id))
+  const [existing] = await db
+    .select()
+    .from(customers)
+    .where(and(eq(customers.id, id), eq(customers.tenantId, ctx.tenantId)))
+  if (!existing) throw new Error('Cliente não encontrado')
+  await db.delete(customers).where(and(eq(customers.id, id), eq(customers.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'delete',
     resource: 'customers',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -172,10 +180,11 @@ export async function deleteCustomer(id: number) {
  * Lista enxuta para selects (ex.: vincular cliente a uma venda).
  */
 export async function getCustomerOptions() {
-  await requirePermission('sales', 'view')
+  const ctx = await requirePermission('sales', 'view')
   return db
     .select({ id: customers.id, name: customers.name, phone: customers.phone })
     .from(customers)
+    .where(eq(customers.tenantId, ctx.tenantId))
     .orderBy(customers.name)
 }
 
@@ -195,10 +204,11 @@ export async function importCustomers(rows: CustomerInput[]): Promise<CustomerIm
   const result: CustomerImportResult = { imported: 0, skipped: 0, errors: [] }
   if (!Array.isArray(rows) || rows.length === 0) return result
 
-  // Carrega documentos e e-mails existentes para deduplicar.
+  // Carrega documentos e e-mails existentes (do tenant) para deduplicar.
   const existing = await db
     .select({ email: customers.email, document: customers.document })
     .from(customers)
+    .where(eq(customers.tenantId, ctx.tenantId))
   const existingEmails = new Set(
     existing.map((e) => e.email?.trim().toLowerCase()).filter(Boolean) as string[],
   )
@@ -227,7 +237,7 @@ export async function importCustomers(rows: CustomerInput[]): Promise<CustomerIm
         continue
       }
 
-      await db.insert(customers).values({ ...data, createdBy: ctx.user.id })
+      await db.insert(customers).values({ ...data, tenantId: ctx.tenantId, createdBy: ctx.user.id })
       if (emailKey) existingEmails.add(emailKey)
       if (data.document) existingDocs.add(data.document)
       result.imported++
@@ -242,6 +252,7 @@ export async function importCustomers(rows: CustomerInput[]): Promise<CustomerIm
     await logAudit({
       action: 'create',
       resource: 'customers',
+      tenantId: ctx.tenantId,
       userId: ctx.user.id,
       userName: ctx.user.name,
       userEmail: ctx.user.email,

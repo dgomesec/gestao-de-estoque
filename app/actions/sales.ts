@@ -5,13 +5,13 @@ import { products, sales, stockMovements, customers } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
 import { getEffectiveRate, computeBrl } from '@/lib/exchange'
-import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 export type SaleKind = 'sale' | 'quote'
 
 export async function getSales(limit = 300) {
-  await requirePermission('sales', 'view')
+  const ctx = await requirePermission('sales', 'view')
   return db
     .select({
       id: sales.id,
@@ -42,6 +42,7 @@ export async function getSales(limit = 300) {
     .from(sales)
     .leftJoin(products, eq(sales.productId, products.id))
     .leftJoin(customers, eq(sales.customerId, customers.id))
+    .where(eq(sales.tenantId, ctx.tenantId))
     .orderBy(desc(sales.createdAt))
     .limit(limit)
 }
@@ -76,7 +77,7 @@ export async function registerSale(input: RegisterInput) {
   const [product] = await db
     .select()
     .from(products)
-    .where(eq(products.id, input.productId))
+    .where(and(eq(products.id, input.productId), eq(products.tenantId, ctx.tenantId)))
   if (!product) throw new Error('Produto não encontrado')
   if (product.quantity < input.quantity) {
     throw new Error(`Estoque insuficiente. Disponível: ${product.quantity} unidade(s)`)
@@ -105,6 +106,7 @@ export async function registerSale(input: RegisterInput) {
   const [created] = await db
     .insert(sales)
     .values({
+      tenantId: ctx.tenantId,
       productId: input.productId,
       kind,
       quantity: input.quantity,
@@ -129,9 +131,10 @@ export async function registerSale(input: RegisterInput) {
   await db
     .update(products)
     .set({ quantity: sql`${products.quantity} - ${input.quantity}`, updatedAt: new Date() })
-    .where(eq(products.id, input.productId))
+    .where(and(eq(products.id, input.productId), eq(products.tenantId, ctx.tenantId)))
 
   await db.insert(stockMovements).values({
+    tenantId: ctx.tenantId,
     productId: input.productId,
     type: 'out',
     quantity: input.quantity,
@@ -142,6 +145,7 @@ export async function registerSale(input: RegisterInput) {
   await logAudit({
     action: 'create',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -193,7 +197,10 @@ export async function registerSaleItems(input: RegisterItemsInput) {
 
   // Carrega os produtos envolvidos e valida estoque agregado por produto.
   const ids = Array.from(new Set(items.map((i) => i.productId)))
-  const rows = await db.select().from(products).where(inArray(products.id, ids))
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(inArray(products.id, ids), eq(products.tenantId, ctx.tenantId)))
   const byId = new Map(rows.map((p) => [p.id, p]))
 
   const neededByProduct = new Map<number, number>()
@@ -238,6 +245,7 @@ export async function registerSaleItems(input: RegisterItemsInput) {
     const [created] = await db
       .insert(sales)
       .values({
+        tenantId: ctx.tenantId,
         productId: it.productId,
         kind,
         quantity: it.quantity,
@@ -261,9 +269,10 @@ export async function registerSaleItems(input: RegisterItemsInput) {
     await db
       .update(products)
       .set({ quantity: sql`${products.quantity} - ${it.quantity}`, updatedAt: new Date() })
-      .where(eq(products.id, it.productId))
+      .where(and(eq(products.id, it.productId), eq(products.tenantId, ctx.tenantId)))
 
     await db.insert(stockMovements).values({
+      tenantId: ctx.tenantId,
       productId: it.productId,
       type: 'out',
       quantity: it.quantity,
@@ -278,6 +287,7 @@ export async function registerSaleItems(input: RegisterItemsInput) {
   await logAudit({
     action: 'create',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -304,7 +314,10 @@ export async function updateSaleCustomer(
 ) {
   const ctx = await requirePermission('sales', 'update')
 
-  const [sale] = await db.select().from(sales).where(eq(sales.id, id))
+  const [sale] = await db
+    .select()
+    .from(sales)
+    .where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
   if (!sale) throw new Error('Registro não encontrado')
 
   const customerId = input.customerId ?? null
@@ -314,7 +327,10 @@ export async function updateSaleCustomer(
 
   let customerLabel = 'avulso/sem cliente'
   if (customerId) {
-    const [c] = await db.select().from(customers).where(eq(customers.id, customerId))
+    const [c] = await db
+      .select()
+      .from(customers)
+      .where(and(eq(customers.id, customerId), eq(customers.tenantId, ctx.tenantId)))
     customerLabel = c?.name ?? `#${customerId}`
   } else if (customerText) {
     customerLabel = customerText
@@ -323,11 +339,12 @@ export async function updateSaleCustomer(
   await db
     .update(sales)
     .set({ customerId, customer: customerText })
-    .where(eq(sales.id, id))
+    .where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'update',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -348,18 +365,22 @@ export async function updateSaleCustomer(
 export async function convertQuote(id: number) {
   const ctx = await requirePermission('sales', 'update')
 
-  const [quote] = await db.select().from(sales).where(eq(sales.id, id))
+  const [quote] = await db
+    .select()
+    .from(sales)
+    .where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
   if (!quote) throw new Error('Orçamento não encontrado')
   if (quote.kind !== 'quote') throw new Error('Este registro não é um orçamento')
 
   await db
     .update(sales)
     .set({ kind: 'sale', convertedAt: new Date() })
-    .where(eq(sales.id, id))
+    .where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'update',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -379,7 +400,10 @@ export async function convertQuote(id: number) {
 export async function deleteSale(id: number) {
   const ctx = await requirePermission('sales', 'delete')
 
-  const [sale] = await db.select().from(sales).where(eq(sales.id, id))
+  const [sale] = await db
+    .select()
+    .from(sales)
+    .where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
   if (!sale) throw new Error('Venda não encontrada')
   if (sale.kind !== 'sale') {
     throw new Error('Este registro é um orçamento. Use o cancelamento de orçamento.')
@@ -389,9 +413,10 @@ export async function deleteSale(id: number) {
   await db
     .update(products)
     .set({ quantity: sql`${products.quantity} + ${sale.quantity}`, updatedAt: new Date() })
-    .where(eq(products.id, sale.productId))
+    .where(and(eq(products.id, sale.productId), eq(products.tenantId, ctx.tenantId)))
 
   await db.insert(stockMovements).values({
+    tenantId: ctx.tenantId,
     productId: sale.productId,
     type: 'in',
     quantity: sale.quantity,
@@ -399,11 +424,12 @@ export async function deleteSale(id: number) {
     createdBy: ctx.user.id,
   })
 
-  await db.delete(sales).where(eq(sales.id, id))
+  await db.delete(sales).where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'delete',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -424,7 +450,10 @@ export async function deleteSale(id: number) {
 export async function cancelQuote(id: number) {
   const ctx = await requirePermission('sales', 'delete')
 
-  const [quote] = await db.select().from(sales).where(eq(sales.id, id))
+  const [quote] = await db
+    .select()
+    .from(sales)
+    .where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
   if (!quote) throw new Error('Orçamento não encontrado')
   if (quote.kind !== 'quote') throw new Error('Apenas orçamentos podem ser cancelados')
 
@@ -432,9 +461,10 @@ export async function cancelQuote(id: number) {
   await db
     .update(products)
     .set({ quantity: sql`${products.quantity} + ${quote.quantity}`, updatedAt: new Date() })
-    .where(eq(products.id, quote.productId))
+    .where(and(eq(products.id, quote.productId), eq(products.tenantId, ctx.tenantId)))
 
   await db.insert(stockMovements).values({
+    tenantId: ctx.tenantId,
     productId: quote.productId,
     type: 'in',
     quantity: quote.quantity,
@@ -442,11 +472,12 @@ export async function cancelQuote(id: number) {
     createdBy: ctx.user.id,
   })
 
-  await db.delete(sales).where(eq(sales.id, id))
+  await db.delete(sales).where(and(eq(sales.id, id), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'delete',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -470,7 +501,10 @@ export async function deleteOrder(groupId: string) {
   const ctx = await requirePermission('sales', 'delete')
   if (!groupId) throw new Error('Pedido inválido')
 
-  const rows = await db.select().from(sales).where(eq(sales.groupId, groupId))
+  const rows = await db
+    .select()
+    .from(sales)
+    .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
   if (rows.length === 0) throw new Error('Pedido não encontrado')
 
   const kind = rows[0].kind
@@ -480,9 +514,10 @@ export async function deleteOrder(groupId: string) {
     await db
       .update(products)
       .set({ quantity: sql`${products.quantity} + ${row.quantity}`, updatedAt: new Date() })
-      .where(eq(products.id, row.productId))
+      .where(and(eq(products.id, row.productId), eq(products.tenantId, ctx.tenantId)))
 
     await db.insert(stockMovements).values({
+      tenantId: ctx.tenantId,
       productId: row.productId,
       type: 'in',
       quantity: row.quantity,
@@ -491,11 +526,12 @@ export async function deleteOrder(groupId: string) {
     })
   }
 
-  await db.delete(sales).where(eq(sales.groupId, groupId))
+  await db.delete(sales).where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'delete',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -536,7 +572,10 @@ export async function convertOrder(groupId: string) {
   const ctx = await requirePermission('sales', 'update')
   if (!groupId) throw new Error('Pedido inválido')
 
-  const rows = await db.select().from(sales).where(eq(sales.groupId, groupId))
+  const rows = await db
+    .select()
+    .from(sales)
+    .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
   if (rows.length === 0) throw new Error('Orçamento não encontrado')
   if (rows.some((r) => r.kind !== 'quote')) {
     throw new Error('Este pedido não é um orçamento')
@@ -545,11 +584,12 @@ export async function convertOrder(groupId: string) {
   await db
     .update(sales)
     .set({ kind: 'sale', convertedAt: new Date() })
-    .where(eq(sales.groupId, groupId))
+    .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'update',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -573,7 +613,10 @@ export async function updateOrderCustomer(
   const ctx = await requirePermission('sales', 'update')
   if (!groupId) throw new Error('Pedido inválido')
 
-  const rows = await db.select().from(sales).where(eq(sales.groupId, groupId))
+  const rows = await db
+    .select()
+    .from(sales)
+    .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
   if (rows.length === 0) throw new Error('Pedido não encontrado')
 
   const customerId = input.customerId ?? null
@@ -581,7 +624,10 @@ export async function updateOrderCustomer(
 
   let customerLabel = 'avulso/sem cliente'
   if (customerId) {
-    const [c] = await db.select().from(customers).where(eq(customers.id, customerId))
+    const [c] = await db
+      .select()
+      .from(customers)
+      .where(and(eq(customers.id, customerId), eq(customers.tenantId, ctx.tenantId)))
     customerLabel = c?.name ?? `#${customerId}`
   } else if (customerText) {
     customerLabel = customerText
@@ -590,11 +636,12 @@ export async function updateOrderCustomer(
   await db
     .update(sales)
     .set({ customerId, customer: customerText })
-    .where(eq(sales.groupId, groupId))
+    .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
     action: 'update',
     resource: 'sales',
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -634,6 +681,7 @@ export async function approveQuoteByToken(token: string) {
     await logAudit({
       action: 'update',
       resource: 'sales',
+      tenantId: rows[0].tenantId,
       summary: `Orçamento aprovado pelo cliente (pedido ${groupId ?? token})`,
       metadata: { groupId, saleIds: rows.map((r) => r.id) },
     })

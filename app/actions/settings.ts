@@ -31,11 +31,12 @@ export async function updateSettings(input: {
       currencyProtectionPct: String(input.currencyProtectionPct),
       rateUpdatedAt: new Date(),
     })
-    .where(eq(settings.id, 1))
+    .where(eq(settings.tenantId, ctx.tenantId))
 
   await logAudit({
     action: "update",
     resource: "settings",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -55,12 +56,12 @@ export async function updateSettings(input: {
  * e persiste. Lança erro apenas se todas as fontes falharem.
  */
 export async function refreshLiveRate() {
-  await requirePermission("settings", "update")
+  const ctx = await requirePermission("settings", "update")
 
   // Garante que a busca não fique presa em modo manual ao forçar.
-  await db.update(settings).set({ manualRate: false }).where(eq(settings.id, 1))
+  await db.update(settings).set({ manualRate: false }).where(eq(settings.tenantId, ctx.tenantId))
 
-  const result = await getEffectiveRate(true)
+  const result = await getEffectiveRate(true, ctx.tenantId)
   if (!result.rateSource && result.rateCheckedAt) {
     throw new Error("Não foi possível obter a cotação agora. O último valor foi mantido.")
   }
@@ -97,11 +98,12 @@ export async function updateStoreInfo(input: {
       storePhone: input.storePhone.trim() || null,
       storeEmail: email || null,
     })
-    .where(eq(settings.id, 1))
+    .where(eq(settings.tenantId, ctx.tenantId))
 
   await logAudit({
     action: "update",
     resource: "settings",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -133,7 +135,10 @@ export async function uploadStoreLogo(formData: FormData) {
   }
 
   // Remove o logo anterior para não acumular arquivos órfãos.
-  const rows = await db.select({ url: settings.storeLogoUrl }).from(settings).where(eq(settings.id, 1))
+  const rows = await db
+    .select({ url: settings.storeLogoUrl })
+    .from(settings)
+    .where(eq(settings.tenantId, ctx.tenantId))
   const previous = rows[0]?.url
   if (previous) {
     try {
@@ -144,16 +149,17 @@ export async function uploadStoreLogo(formData: FormData) {
   }
 
   const ext = file.name.split(".").pop() || "png"
-  const blob = await put(`store-logo/logo-${Date.now()}.${ext}`, file, {
+  const blob = await put(`store-logo/${ctx.tenantId}/logo-${Date.now()}.${ext}`, file, {
     access: "public",
     contentType: file.type,
   })
 
-  await db.update(settings).set({ storeLogoUrl: blob.url }).where(eq(settings.id, 1))
+  await db.update(settings).set({ storeLogoUrl: blob.url }).where(eq(settings.tenantId, ctx.tenantId))
 
   await logAudit({
     action: "update",
     resource: "settings",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
@@ -171,7 +177,10 @@ export async function uploadStoreLogo(formData: FormData) {
 export async function removeStoreLogo() {
   const ctx = await requirePermission("settings", "update")
 
-  const rows = await db.select({ url: settings.storeLogoUrl }).from(settings).where(eq(settings.id, 1))
+  const rows = await db
+    .select({ url: settings.storeLogoUrl })
+    .from(settings)
+    .where(eq(settings.tenantId, ctx.tenantId))
   const previous = rows[0]?.url
   if (previous) {
     try {
@@ -181,11 +190,12 @@ export async function removeStoreLogo() {
     }
   }
 
-  await db.update(settings).set({ storeLogoUrl: null }).where(eq(settings.id, 1))
+  await db.update(settings).set({ storeLogoUrl: null }).where(eq(settings.tenantId, ctx.tenantId))
 
   await logAudit({
     action: "update",
     resource: "settings",
+    tenantId: ctx.tenantId,
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
