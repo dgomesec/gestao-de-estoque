@@ -311,6 +311,23 @@ async function main() {
   }
   console.log(`[v0] ${AUDIT.length} registros de auditoria criados`)
 
+  // 12) CRÍTICO: como inserimos linhas com IDs explícitos, precisamos avançar as
+  // sequências serial até o MAX(id) de cada tabela. Sem isto, o próximo INSERT
+  // feito pela aplicação (que omite o id) reutilizaria um id já existente e
+  // falharia com "duplicate key" — quebrando criação de vendas, estoque, etc.
+  const SEQ_TABLES = [
+    'sales', 'products', 'customers', 'stock_movements', 'sales_goals',
+    'app_roles', 'role_permissions', 'user_roles', 'audit_logs', 'settings',
+  ]
+  for (const t of SEQ_TABLES) {
+    await pool.query(
+      `SELECT setval(pg_get_serial_sequence($1, 'id'), (SELECT GREATEST(COALESCE(MAX(id),0),1) FROM ${t}), true)
+       WHERE pg_get_serial_sequence($1, 'id') IS NOT NULL`,
+      [t],
+    )
+  }
+  console.log('[v0] sequencias serial ressincronizadas')
+
   console.log('\n[v0] Seed concluido com sucesso!')
   console.log('[v0] Login de demonstracao: admin@acmedemo.com.br / AcmeDemo2026!')
 }
