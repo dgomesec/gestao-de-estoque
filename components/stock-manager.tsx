@@ -33,6 +33,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Search, X, Plus } from "lucide-react"
 import { registerMovements } from "@/app/actions/stock"
 import { ColorTag } from "@/components/color-tag"
 import { formatDateTime } from "@/lib/format"
+import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Movement = {
   id: number
@@ -79,6 +80,11 @@ export function StockManager({
     if (filter === "all") return movements
     return movements.filter((m) => m.type === filter)
   }, [movements, filter])
+
+  const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(
+    filteredMovements,
+    filter,
+  )
 
   // Resultados da busca por nome ou SKU, ocultando os já adicionados.
   // Para saída, só mostra itens com estoque disponível.
@@ -205,7 +211,7 @@ export function StockManager({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredMovements.map((m) => (
+                  pageItems.map((m) => (
                     <TableRow key={m.id}>
                       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                         {formatDateTime(m.createdAt)}
@@ -239,6 +245,15 @@ export function StockManager({
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="movimentações"
+          />
         </CardContent>
       </Card>
 

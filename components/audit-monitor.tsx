@@ -30,6 +30,7 @@ import {
 import { Search, Globe, Monitor, MapPin, Activity, LogIn, Users } from "lucide-react"
 import { getAuditLogs, type AuditLogRow, type AuditStats } from "@/app/actions/audit"
 import { RESOURCES } from "@/lib/constants"
+import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 const ACTION_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   login: { label: "Login", variant: "secondary" },

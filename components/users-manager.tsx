@@ -33,6 +33,7 @@ import { toast } from "sonner"
 import { Plus, MoreHorizontal, ShieldCheck, Trash2, UserCog } from "lucide-react"
 import { createUser, setUserRoles, deleteUser, type UserRow } from "@/app/actions/users"
 import { formatDate } from "@/lib/format"
+import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Role = { id: number; name: string; description: string | null; isSuperAdmin: boolean }
 
@@ -53,6 +54,8 @@ export function UsersManager({
   const [selectedRoles, setSelectedRoles] = useState<number[]>([])
   const [form, setForm] = useState({ name: "", email: "", password: "" })
   const [isPending, startTransition] = useTransition()
+
+  const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(users)
 
   function toggleRole(id: number) {
     setSelectedRoles((prev) =>
@@ -137,7 +140,7 @@ export function UsersManager({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((u) => (
+                {pageItems.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell>
                       <div className="font-medium">
@@ -202,6 +205,15 @@ export function UsersManager({
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="usuários"
+          />
         </CardContent>
       </Card>
 

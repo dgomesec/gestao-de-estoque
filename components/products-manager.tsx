@@ -49,6 +49,7 @@ import { ColorTag } from "@/components/color-tag"
 import { ColorPicker } from "@/components/color-picker"
 import { detectColor, colorFromLabel } from "@/lib/colors"
 import { formatBRL, formatUSD, formatPct } from "@/lib/format"
+import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Product = {
   id: number
@@ -137,6 +138,11 @@ export function ProductsManager({
       return matchesText && matchesColor
     })
   }, [products, query, colorFilter])
+
+  const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(
+    filtered,
+    `${query}|${colorFilter}`,
+  )
 
   function openCreate() {
     setEditing(null)
@@ -366,7 +372,7 @@ export function ProductsManager({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((p) => {
+                  pageItems.map((p) => {
                     const cost = Number(p.priceUsd)
                     const costBrl = cost * factor
                     const minBrl = cost * (1 + Number(p.marginMin) / 100) * factor
@@ -444,6 +450,15 @@ export function ProductsManager({
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="produtos"
+          />
         </CardContent>
       </Card>
 
