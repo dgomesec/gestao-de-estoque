@@ -48,6 +48,7 @@ import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
 import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
 import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from "@/lib/format"
+import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Sale = {
   id: number
@@ -256,6 +257,16 @@ export function SalesManager({
       return haystack.includes(q)
     })
   }, [orders, filter, listQuery, listColor])
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    pageItems: pagedOrders,
+    total,
+    totalPages,
+  } = usePagination(filteredOrders, `${filter}|${listQuery}|${listColor}`)
 
   // Cor "efetiva" de um produto: usa a cor persistida (primeiro rótulo, caso
   // haja variações) e, na ausência dela, detecta a partir do nome.
@@ -574,12 +585,17 @@ export function SalesManager({
     })
   }
 
-  // Marca/desmarca todos os pedidos atualmente filtrados.
+  // Marca/desmarca todos os pedidos exibidos na página atual.
   function toggleAll() {
     setSelectedGroups((prev) => {
-      const allSelected = filteredOrders.length > 0 && filteredOrders.every((o) => prev.has(o.groupId))
-      if (allSelected) return new Set()
-      return new Set(filteredOrders.map((o) => o.groupId))
+      const allSelected = pagedOrders.length > 0 && pagedOrders.every((o) => prev.has(o.groupId))
+      const next = new Set(prev)
+      if (allSelected) {
+        for (const o of pagedOrders) next.delete(o.groupId)
+      } else {
+        for (const o of pagedOrders) next.add(o.groupId)
+      }
+      return next
     })
   }
 
@@ -594,8 +610,8 @@ export function SalesManager({
   )
 
   const allFilteredSelected =
-    filteredOrders.length > 0 && filteredOrders.every((o) => selectedGroups.has(o.groupId))
-  const someFilteredSelected = filteredOrders.some((o) => selectedGroups.has(o.groupId))
+    pagedOrders.length > 0 && pagedOrders.every((o) => selectedGroups.has(o.groupId))
+  const someFilteredSelected = pagedOrders.some((o) => selectedGroups.has(o.groupId))
 
   // Abre o(s) recibo(s) dos pedidos selecionados (um por pedido/groupId).
   function bulkReceipts() {
@@ -853,7 +869,7 @@ export function SalesManager({
                         if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected
                       }}
                       onChange={toggleAll}
-                      disabled={filteredOrders.length === 0}
+                      disabled={pagedOrders.length === 0}
                     />
                   </TableHead>
                   <TableHead>Identificador</TableHead>
@@ -875,7 +891,7 @@ export function SalesManager({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredOrders.map((o) => {
+                  pagedOrders.map((o) => {
                     const isSelected = selectedGroups.has(o.groupId)
                     return (
                       <TableRow key={o.groupId} data-state={isSelected ? "selected" : undefined}>
@@ -942,7 +958,7 @@ export function SalesManager({
                 Nenhum registro encontrado.
               </div>
             ) : (
-              filteredOrders.map((o) => {
+              pagedOrders.map((o) => {
                 const isSelected = selectedGroups.has(o.groupId)
                 return (
                   <div
@@ -1013,6 +1029,15 @@ export function SalesManager({
               })
             )}
           </div>
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="pedidos"
+          />
         </CardContent>
       </Card>
 

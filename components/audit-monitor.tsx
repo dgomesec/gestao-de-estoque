@@ -30,6 +30,7 @@ import {
 import { Search, Globe, Monitor, MapPin, Activity, LogIn, Users } from "lucide-react"
 import { getAuditLogs, type AuditLogRow, type AuditStats } from "@/app/actions/audit"
 import { RESOURCES } from "@/lib/constants"
+import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 const ACTION_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   login: { label: "Login", variant: "secondary" },
@@ -68,6 +69,11 @@ export function AuditMonitor({
   const [resource, setResource] = useState("all")
   const [selected, setSelected] = useState<AuditLogRow | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(
+    logs,
+    `${action}|${resource}|${search}`,
+  )
 
   function applyFilters(next: { action?: string; resource?: string; search?: string }) {
     startTransition(async () => {
@@ -184,7 +190,7 @@ export function AuditMonitor({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  logs.map((log) => {
+                  pageItems.map((log) => {
                     const a = ACTION_LABELS[log.action] ?? { label: log.action, variant: "outline" as const }
                     const location = [log.city, log.country].filter(Boolean).join(", ")
                     return (
@@ -230,6 +236,15 @@ export function AuditMonitor({
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="eventos"
+          />
         </CardContent>
       </Card>
 

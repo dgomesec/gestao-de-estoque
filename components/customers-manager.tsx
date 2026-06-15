@@ -39,6 +39,7 @@ import {
   type CustomerWithStats,
 } from "@/app/actions/customers"
 import { formatBRL, formatDate } from "@/lib/format"
+import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Perms = { create: boolean; update: boolean; delete: boolean }
 
@@ -78,6 +79,11 @@ export function CustomersManager({
         (c.document ?? "").toLowerCase().includes(q),
     )
   }, [customers, query])
+
+  const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(
+    filtered,
+    query,
+  )
 
   function openCreate() {
     setEditing(null)
@@ -176,7 +182,7 @@ export function CustomersManager({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((c) => (
+                  pageItems.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
                         <div className="font-medium">{c.name}</div>
@@ -246,6 +252,15 @@ export function CustomersManager({
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="clientes"
+          />
         </CardContent>
       </Card>
 
