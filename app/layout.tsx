@@ -1,5 +1,4 @@
-import { Analytics } from '@vercel/analytics/next'
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
@@ -11,27 +10,22 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'EletroStock — Controle de Estoque e Vendas',
-  description:
-    'Sistema de controle de entrada e saída de estoque para venda de eletrônicos com preços em USD convertidos para BRL.',
-  generator: 'v0.app',
-  icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
+  title: {
+    default: 'Rareon Inventory Control',
+    template: '%s | Rareon Inventory Control',
   },
+  description:
+    'Plataforma profissional para controle de estoque, vendas, clientes e operações comerciais.',
+  applicationName: 'Rareon Inventory Control',
+  icons: {
+    icon: [{ url: '/rareon-icon.png', type: 'image/png' }],
+    shortcut: '/rareon-icon.png',
+    apple: '/rareon-icon.png',
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#0f172a',
 }
 
 export default function RootLayout({
@@ -44,7 +38,6 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         {children}
         <Toaster position="top-right" richColors />
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

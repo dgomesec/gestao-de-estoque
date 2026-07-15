@@ -59,8 +59,6 @@ export default async function DashboardLayout({
     return ctx.isSuperAdmin || ctx.permissions.has(`${item.resource}:view`)
   })
 
-  const brandName = ctx.tenant.brandName?.trim() || ctx.tenant.name
-
   const roleLabel = ctx.isPlatformAdmin
     ? 'Plataforma'
     : ctx.isSuperAdmin
@@ -76,7 +74,7 @@ export default async function DashboardLayout({
         items={items}
         user={{ name: ctx.user.name, email: ctx.user.email }}
         roleLabel={roleLabel}
-        brand={{ name: brandName, logoUrl: ctx.tenant.logoUrl }}
+        brand={{ name: 'Rareon Inventory Control', logoUrl: '/rareon-icon.png' }}
         isPlatformAdmin={ctx.isPlatformAdmin}
       />
       <div className="flex-1 min-w-0">

@@ -68,12 +68,12 @@ function toFriendlyError(err: unknown): Error {
 
   if (msg.includes('credit card') || msg.includes('valid credit card')) {
     return new Error(
-      'A importação por IA usa o Vercel AI Gateway, que exige um cartão de crédito válido cadastrado na conta para liberar os créditos gratuitos. Adicione um cartão nas configurações do AI Gateway da Vercel e tente novamente.',
+      'O serviço de importação por IA precisa de uma forma de pagamento válida para liberar os créditos. Revise a configuração de faturamento do serviço de IA e tente novamente.',
     )
   }
   if (msg.includes('api key') || msg.includes('unauthorized') || msg.includes('401')) {
     return new Error(
-      'Não foi possível autenticar no provedor de IA. Verifique se o AI Gateway está configurado corretamente no projeto.',
+      'Não foi possível autenticar no serviço de IA. Verifique a configuração da integração e tente novamente.',
     )
   }
   if (msg.includes('rate limit') || msg.includes('429')) {
@@ -81,7 +81,7 @@ function toFriendlyError(err: unknown): Error {
   }
   if (msg.includes('quota') || msg.includes('insufficient') || msg.includes('billing')) {
     return new Error(
-      'Os créditos de IA do projeto se esgotaram ou o faturamento não está ativo. Verifique o AI Gateway da Vercel.',
+      'Os créditos de IA se esgotaram ou o faturamento do serviço não está ativo. Verifique a integração de IA.',
     )
   }
   return new Error('Falha ao processar com a IA: ' + (raw || 'erro desconhecido') + '.')

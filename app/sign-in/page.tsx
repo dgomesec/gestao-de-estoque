@@ -17,16 +17,16 @@ export default async function SignInPage() {
     getActiveTenant(),
   ])
 
-  // Sem tenant resolvido (domínio base/master), usa um nome neutro — nunca a
-  // marca de um cliente específico.
-  const brandName = tenant?.brandName?.trim() || tenant?.name || 'Gestão de Estoque'
+  // A identidade pública da plataforma permanece estável, sem expor o nome de
+  // um tenant específico durante o carregamento ou na autenticação.
+  const brandName = 'Rareon Inventory Control'
 
   return (
     <>
       <TenantBrandStyle tenant={tenant} />
       <AuthForm
         needsBootstrap={Number(totalUsers) === 0}
-        brand={{ name: brandName, logoUrl: tenant?.logoUrl ?? null }}
+        brand={{ name: brandName, logoUrl: '/rareon-icon.png' }}
       />
     </>
   )
