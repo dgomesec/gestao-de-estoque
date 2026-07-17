@@ -118,6 +118,118 @@ export async function parseXlsx(file: File): Promise<ImportRow[]> {
   return rowsFromRecords(records)
 }
 
+// --- Parsing BRUTO para o assistente de IA ---------------------------------
+// A importação por template exige colunas conhecidas. Já a importação por IA
+// precisa entender planilhas de QUALQUER layout/segmento, então lemos a matriz
+// completa (todas as colunas e linhas, sem filtrar) e deixamos a IA mapear.
+
+export type SheetMatrix = {
+  /** Todas as linhas como matriz de células (strings), incluindo cabeçalhos. */
+  rows: string[][]
+}
+
+/** Gera um SKU curto e legível a partir do nome (usado quando não há coluna de código). */
+function slugifySku(name: string): string {
+  return (
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 24) || "PROD"
+  )
+}
+
+function cellToString(v: unknown): string {
+  if (v == null) return ""
+  if (v instanceof Date) {
+    // Datas viram ISO curto (a IA lida melhor e evita ruído de fuso).
+    return v.toISOString().slice(0, 10)
+  }
+  return String(v).trim()
+}
+
+/** Lê um XLSX como matriz bruta de células (todas as colunas/linhas). */
+export async function sheetXlsxToMatrix(file: File): Promise<SheetMatrix> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: "array", cellDates: true })
+  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: "",
+    blankrows: false,
+  })
+  return { rows: raw.map((r) => (r as unknown[]).map(cellToString)) }
+}
+
+/** Lê um CSV como matriz bruta de células (todas as colunas/linhas). */
+export function sheetCsvToMatrix(file: File): Promise<SheetMatrix> {
+  return new Promise((resolve, reject) => {
+    Papa.parse<unknown[]>(file, {
+      header: false,
+      skipEmptyLines: true,
+      complete: (res) => resolve({ rows: (res.data as unknown[][]).map((r) => r.map(cellToString)) }),
+      error: (err) => reject(err),
+    })
+  })
+}
+
+/** Escolhe o parser de matriz conforme a extensão do arquivo. */
+export async function fileToMatrix(file: File): Promise<SheetMatrix> {
+  const ext = file.name.split(".").pop()?.toLowerCase()
+  if (ext === "csv") return sheetCsvToMatrix(file)
+  return sheetXlsxToMatrix(file)
+}
+
+/** Mapeamento de colunas (índices 0-based) retornado pela IA. */
+export type ColumnMapping = {
+  sku: number | null
+  name: number | null
+  quantity: number | null
+  price: number | null
+  headerRowIndex: number
+}
+
+/**
+ * Constrói as linhas de importação de produtos aplicando o mapeamento de
+ * colunas da IA sobre a matriz completa — de forma determinística e local,
+ * sem enviar todas as linhas ao modelo (mais barato e escala para milhares).
+ */
+export function rowsFromMatrixMapping(matrix: SheetMatrix, mapping: ColumnMapping): ImportRow[] {
+  const start = Math.max(0, (mapping.headerRowIndex ?? 0) + 1)
+  const out: ImportRow[] = []
+  // Garante SKUs únicos dentro do próprio lote (o arquivo pode não ter coluna
+  // de código, ou repetir códigos). SKUs repetidos ganham um sufixo -2, -3...
+  const seenSkus = new Map<string, number>()
+  for (let i = start; i < matrix.rows.length; i++) {
+    const cells = matrix.rows[i]
+    if (!cells || cells.length === 0) continue
+    const name = mapping.name != null ? (cells[mapping.name] ?? "").trim() : ""
+    // Ignora linhas de subtotal/rótulo sem nome de produto.
+    if (!name) continue
+    let sku = (mapping.sku != null ? (cells[mapping.sku] ?? "").trim() : "") || slugifySku(name)
+    const seen = seenSkus.get(sku)
+    if (seen) {
+      seenSkus.set(sku, seen + 1)
+      sku = `${sku}-${seen + 1}`.slice(0, 32)
+    } else {
+      seenSkus.set(sku, 1)
+    }
+    out.push({
+      sku,
+      name,
+      description: undefined,
+      quantity: mapping.quantity != null ? toNumber(cells[mapping.quantity]) : 0,
+      priceUsd: mapping.price != null ? toNumber(cells[mapping.price]) : 0,
+      marginMin: 15,
+      marginMax: 40,
+      reorderLevel: 5,
+    })
+  }
+  return out
+}
+
 /** Gera e baixa um arquivo de template (CSV ou XLSX) com cabeçalhos e exemplo. */
 export function downloadTemplate(format: "csv" | "xlsx") {
   const example = {

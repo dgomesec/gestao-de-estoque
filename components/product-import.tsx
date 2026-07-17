@@ -26,12 +26,14 @@ import {
 import { toast } from "sonner"
 import { Upload, FileSpreadsheet, Sparkles, Download, FileText, Loader2, AlertTriangle } from "lucide-react"
 import { importProducts, type ImportRow, type ImportSource } from "@/app/actions/products"
-import { extractFromText, extractFromFile } from "@/app/actions/ai-import"
+import { extractFromText, extractFromFile, mapProductColumns } from "@/app/actions/ai-import"
 import {
   parseCsv,
   parseXlsx,
   downloadTemplate,
   fileToDataUrl,
+  fileToMatrix,
+  rowsFromMatrixMapping,
 } from "@/lib/import-parsers"
 import { formatUSD } from "@/lib/format"
 import { detectColors } from "@/lib/colors"
@@ -40,6 +42,11 @@ import { detectColors } from "@/lib/colors"
 // "variations" = uma única entrada com a lista de cores como variações.
 // "split"      = uma entrada para cada cor identificada.
 type ColorStrategy = "variations" | "split"
+
+// Quantas linhas renderizar na pré-visualização. Planilhas grandes (milhares de
+// itens) são importadas por completo, mas renderizar todos os inputs travaria o
+// navegador — então mostramos só as primeiras e avisamos sobre o restante.
+const PREVIEW_LIMIT = 100
 
 export function ProductImport() {
   const [open, setOpen] = useState(false)
@@ -99,12 +106,22 @@ export function ProductImport() {
     setRows([])
     try {
       const ext = file.name.split(".").pop()?.toLowerCase()
-      // CSV/XLSX pela IA: converte em texto e manda para o modelo entender.
+      // CSV/XLSX pela IA: lê a matriz completa (qualquer layout/segmento), pede
+      // à IA apenas o MAPEAMENTO das colunas (amostra pequena = barato) e depois
+      // aplica esse mapa localmente em todas as linhas — escala para milhares.
       if (ext === "csv" || ext === "xlsx" || ext === "xls") {
-        const parsed = ext === "csv" ? await parseCsv(file) : await parseXlsx(file)
-        const asText = JSON.stringify(parsed)
-        const result = await extractFromText(asText)
-        applyAiResult(result.products, result.currencyDetected)
+        const matrix = await fileToMatrix(file)
+        if (matrix.rows.length === 0) {
+          toast.error("A planilha está vazia ou não pôde ser lida.")
+          return
+        }
+        const mapping = await mapProductColumns(matrix.rows.slice(0, 8))
+        if (mapping.name == null) {
+          toast.error("A IA não identificou uma coluna de nome/descrição de produto na planilha.")
+          return
+        }
+        const built = rowsFromMatrixMapping(matrix, mapping)
+        applyAiResult(built, mapping.currencyDetected)
         return
       }
       const dataUrl = await fileToDataUrl(file)
@@ -135,7 +152,7 @@ export function ProductImport() {
   }
 
   function applyAiResult(
-    products: { sku: string; name: string; description: string | null; quantity: number; priceUsd: number }[],
+    products: { sku: string; name: string; description?: string | null; quantity: number; priceUsd: number }[],
     currency: string | null,
   ) {
     if (products.length === 0) {
@@ -365,8 +382,19 @@ export function ProductImport() {
                       {source === "ai" ? "IA" : "Lote"}
                     </Badge>
                   </h3>
-                  <p className="text-xs text-muted-foreground">Edite os campos antes de confirmar</p>
+                  <p className="text-xs text-muted-foreground">
+                    {rows.length > PREVIEW_LIMIT
+                      ? `Mostrando as primeiras ${PREVIEW_LIMIT} de ${rows.length} linhas`
+                      : "Edite os campos antes de confirmar"}
+                  </p>
                 </div>
+                {rows.length > PREVIEW_LIMIT && (
+                  <div className="mb-3 rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+                    Todas as <span className="font-medium text-foreground">{rows.length}</span> linhas serão
+                    importadas. A pré-visualização mostra apenas as primeiras {PREVIEW_LIMIT} para manter o
+                    desempenho.
+                  </div>
+                )}
                 {multiColorCount > 0 && (
                   <div className="mb-3 flex gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
@@ -397,7 +425,7 @@ export function ProductImport() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {rows.map((r, i) => (
+                      {rows.slice(0, PREVIEW_LIMIT).map((r, i) => (
                         <TableRow key={i}>
                           <TableCell>
                             <Input

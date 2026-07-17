@@ -167,6 +167,73 @@ export async function extractFromFile(
   }
 }
 
+// --- Mapeamento de colunas de planilha (barato: só a amostra) ---------------
+
+const columnMappingSchema = z.object({
+  sku: z.number().int().nullable().describe('Índice (0-based) da coluna de código/SKU. null se não houver.'),
+  name: z.number().int().nullable().describe('Índice da coluna do nome/descrição do produto.'),
+  quantity: z.number().int().nullable().describe('Índice da coluna de quantidade em estoque. null se não houver.'),
+  price: z.number().int().nullable().describe('Índice da coluna de preço de custo unitário. null se não houver.'),
+  headerRowIndex: z.number().int().describe('Índice (0-based) da linha que contém os cabeçalhos.'),
+  currencyDetected: z.string().nullable().describe('Moeda detectada (ex: USD, BRL). null se indefinida.'),
+})
+
+export type AiColumnMapping = {
+  sku: number | null
+  name: number | null
+  quantity: number | null
+  price: number | null
+  headerRowIndex: number
+  currencyDetected: string | null
+}
+
+const COLUMN_MAP_PROMPT = `Você recebe as primeiras linhas de uma planilha de produtos de QUALQUER segmento comercial (peixes ornamentais, peças de moto/automotivas, eletrônicos, vestuário, etc.).
+Sua tarefa é identificar, pelos índices 0-based das colunas, qual coluna corresponde a cada campo:
+- name: nome ou descrição do produto (obrigatório identificar a mais provável).
+- sku: código/referência do produto, se houver.
+- quantity: quantidade em estoque/saldo, se houver.
+- price: preço de custo unitário; se só houver preço de venda, use-o.
+Regras:
+- Use null quando o campo não existir na planilha.
+- Informe headerRowIndex (a linha onde estão os títulos das colunas; geralmente 0).
+- Informe a moeda detectada, se possível.
+- NÃO invente colunas: baseie-se apenas na amostra fornecida.`
+
+/**
+ * Analisa APENAS a amostra (cabeçalho + poucas linhas) de uma planilha e
+ * devolve o mapeamento de colunas. O restante das milhares de linhas é
+ * processado localmente, sem custo de IA.
+ */
+export async function mapProductColumns(sampleRows: string[][]): Promise<AiColumnMapping> {
+  await requirePermission('products', 'create')
+  if (!sampleRows?.length) throw new Error('Amostra vazia')
+
+  const sample = sampleRows
+    .slice(0, 8)
+    .map((r, i) => `[linha ${i}] ${JSON.stringify(r)}`)
+    .join('\n')
+
+  try {
+    const { output } = await generateText({
+      model: MODEL,
+      system: COLUMN_MAP_PROMPT,
+      prompt: `Amostra da planilha (cada linha é um array de células):\n${sample}`,
+      output: Output.object({ schema: columnMappingSchema }),
+    })
+    return {
+      sku: output.sku ?? null,
+      name: output.name ?? null,
+      quantity: output.quantity ?? null,
+      price: output.price ?? null,
+      headerRowIndex: output.headerRowIndex ?? 0,
+      currencyDetected: output.currencyDetected ?? null,
+    }
+  } catch (err) {
+    console.log('[v0] mapProductColumns error:', err instanceof Error ? err.message : err)
+    throw toFriendlyError(err)
+  }
+}
+
 // --- Extração de clientes ---------------------------------------------------
 
 const customerSchema = z.object({

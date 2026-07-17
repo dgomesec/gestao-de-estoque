@@ -403,6 +403,13 @@ export async function importProducts(
   const existingSkus = new Set(existing.map((p) => p.sku.toLowerCase()))
   const byName = new Map(existing.map((p) => [p.name.trim().toLowerCase(), p]))
 
+  // Produtos novos são acumulados e inseridos em LOTE (chunks) após o loop, em
+  // vez de um round-trip por linha — essencial para catálogos com milhares de
+  // itens (evita timeout). Merges com produtos já existentes seguem inline.
+  type NewProduct = { values: typeof products.$inferInsert; quantity: number }
+  const toInsert: NewProduct[] = []
+  const pendingByName = new Map<string, NewProduct>()
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     const rowNum = i + 1
@@ -472,19 +479,35 @@ export async function importProducts(
       continue
     }
 
+    const description = row.description?.toString().trim() || null
+
+    // Deduplicação por nome DENTRO do mesmo lote: soma estoque e mantém os
+    // maiores valores, sem criar produto duplicado.
+    const pend = pendingByName.get(name.toLowerCase())
+    if (pend) {
+      pend.values.quantity = (Number(pend.values.quantity) || 0) + quantity
+      pend.quantity += quantity
+      pend.values.priceUsd = String(Math.max(Number(pend.values.priceUsd), priceUsd))
+      pend.values.marginMin = String(Math.min(Number(pend.values.marginMin), marginMin))
+      pend.values.marginMax = String(Math.max(Number(pend.values.marginMax), marginMax))
+      if (!pend.values.description && description) pend.values.description = description
+      result.merged++
+      result.mergedNames.push(name)
+      continue
+    }
+
     if (existingSkus.has(sku.toLowerCase())) {
       result.errors.push({ row: rowNum, sku, message: 'SKU já cadastrado' })
       result.skipped++
       continue
     }
 
-    const [created] = await db
-      .insert(products)
-      .values({
+    const np: NewProduct = {
+      values: {
         tenantId: ctx.tenantId,
         sku,
         name,
-        description: row.description?.toString().trim() || null,
+        description,
         ...resolveColorFields(name, row.color, row.colorHex),
         quantity,
         priceUsd: String(priceUsd),
@@ -493,23 +516,37 @@ export async function importProducts(
         reorderLevel,
         importSource: source,
         createdBy: ctx.user.id,
-      })
-      .returning()
+      },
+      quantity,
+    }
+    toInsert.push(np)
+    pendingByName.set(name.toLowerCase(), np)
+    existingSkus.add(sku.toLowerCase())
+  }
 
-    if (quantity > 0) {
-      await db.insert(stockMovements).values({
+  // Fase 2: inserção em lote dos produtos novos + movimentos de estoque, em
+  // blocos, para suportar milhares de linhas sem estourar o tempo limite.
+  const CHUNK = 500
+  for (let i = 0; i < toInsert.length; i += CHUNK) {
+    const slice = toInsert.slice(i, i + CHUNK)
+    const created = await db
+      .insert(products)
+      .values(slice.map((s) => s.values))
+      .returning({ id: products.id })
+
+    const movements = created
+      .map((c, j) => ({ id: c.id, quantity: slice[j].quantity }))
+      .filter((m) => m.quantity > 0)
+      .map((m) => ({
         tenantId: ctx.tenantId,
-        productId: created.id,
-        type: 'in',
-        quantity,
+        productId: m.id,
+        type: 'in' as const,
+        quantity: m.quantity,
         note: source === 'ai' ? 'Importação por IA' : 'Importação em lote',
         createdBy: ctx.user.id,
-      })
-    }
-
-    existingSkus.add(sku.toLowerCase())
-    byName.set(name.toLowerCase(), created)
-    result.imported++
+      }))
+    if (movements.length > 0) await db.insert(stockMovements).values(movements)
+    result.imported += created.length
   }
 
   await logAudit({
