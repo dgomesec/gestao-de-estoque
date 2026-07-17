@@ -33,7 +33,10 @@ export type AiExtractionResult = {
   documentType: string | null
 }
 
-const MODEL = 'google/gemini-3.5-flash'
+// Modelo multimodal (texto + imagem + PDF) disponível no tier padrão do
+// AI Gateway. Evitamos modelos premium (ex.: gemini-3.5-flash), que exigem
+// créditos pagos e retornam "Free tier users do not have access to this model".
+const MODEL = 'google/gemini-2.5-flash'
 
 const SYSTEM_PROMPT = `Você é um assistente especializado em extrair produtos de notas fiscais, recibos de compra e planilhas de eletrônicos.
 Analise o conteúdo fornecido e identifique cada item de produto distinto.
