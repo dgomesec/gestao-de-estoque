@@ -38,12 +38,13 @@ export type AiExtractionResult = {
 // créditos pagos e retornam "Free tier users do not have access to this model".
 const MODEL = 'google/gemini-2.5-flash'
 
-const SYSTEM_PROMPT = `Você é um assistente especializado em extrair produtos de notas fiscais, recibos de compra e planilhas de eletrônicos.
+const SYSTEM_PROMPT = `Você é um assistente especializado em extrair produtos de notas fiscais, recibos de compra e planilhas de QUALQUER segmento comercial.
+Os produtos podem ser de qualquer categoria — eletrônicos, peças automotivas, peixes ornamentais e acessórios de aquário, vestuário, alimentos, cosméticos, materiais de construção, etc. Não presuma um segmento específico: identifique os itens exatamente como aparecem no documento.
 Analise o conteúdo fornecido e identifique cada item de produto distinto.
 Regras:
-- Extraia o nome, quantidade e preço unitário de custo de cada produto.
-- Os preços devem ser o CUSTO unitário em dólar (USD). Se o documento estiver em reais (BRL), retorne o valor mesmo assim e indique a moeda em currencyDetected.
-- Se não houver um SKU/código explícito, gere um SKU curto e legível derivado do nome (ex: "iPhone 15 128GB" -> "IPH15-128").
+- Extraia o nome, quantidade e preço unitário de custo de cada produto, seja ele qual for.
+- Os preços devem ser o CUSTO unitário em dólar (USD). Se o documento estiver em reais (BRL) ou outra moeda, retorne o valor mesmo assim e indique a moeda em currencyDetected.
+- Se não houver um SKU/código explícito, gere um SKU curto e legível derivado do nome. Exemplos por segmento: "iPhone 15 128GB" -> "IPH15-128"; "Pastilha de Freio Bosch" -> "PAST-FREIO-BOSCH"; "Peixe Betta Macho Azul" -> "BETTA-MACHO-AZUL"; "Filtro Externo Canister 1200L/h" -> "FILT-CANISTER-1200".
 - Ignore linhas que não sejam produtos (impostos, frete, totais, descontos).
 - Se um campo não existir, retorne null.`
 
