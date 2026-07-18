@@ -16,12 +16,17 @@ export default async function ProductsPage() {
     <>
       <PageHeader
         title="Produtos"
-        description="Cadastro de eletrônicos com preço em dólar e custo convertido para real."
+        description={
+          settings.showCostUsd
+            ? "Cadastro de eletrônicos com preço em dólar e custo convertido para a moeda de venda."
+            : "Cadastro de eletrônicos com custo informado na moeda de venda."
+        }
       />
       <ProductsManager
         products={products}
         rate={settings.exchangeRate}
         currency={settings.displayCurrency}
+        showCostUsd={settings.showCostUsd}
         protectionPct={settings.currencyProtectionPct}
         perms={{
           create: hasPermission(ctx, "products", "create"),

@@ -38,7 +38,7 @@ export default async function ReportsPage() {
     <>
       <PageHeader
         title="Relatórios"
-        description="Gestão de vendas e estoque com exportação para CSV."
+        description="Gestão de vendas e estoque com exportação para PDF ou CSV."
       />
       <ReportsView
         initialReport={report}
@@ -47,6 +47,7 @@ export default async function ReportsPage() {
         stockRows={stockRows}
         stockTotalBrl={stockTotalBrl}
         currency={settings.displayCurrency}
+        showCostUsd={settings.showCostUsd}
         canDeleteGoals={hasPermission(ctx, "reports", "delete")}
       />
     </>

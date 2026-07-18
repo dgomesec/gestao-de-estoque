@@ -23,7 +23,11 @@ export default async function SalesPage() {
     <>
       <PageHeader
         title="Vendas e Orçamentos"
-        description="Registre vendas e orçamentos em dólar com conversão para real, margem manual e cliente vinculado."
+        description={
+          settings.showCostUsd
+            ? "Registre vendas e orçamentos em dólar com conversão para a moeda de venda, margem manual e cliente vinculado."
+            : "Registre vendas e orçamentos na moeda de venda, com margem manual e cliente vinculado."
+        }
       />
       <SalesManager
         sales={sales}
@@ -41,6 +45,7 @@ export default async function SalesPage() {
         customers={customers}
         rate={settings.exchangeRate}
         currency={settings.displayCurrency}
+        showCostUsd={settings.showCostUsd}
         protectionPct={settings.currencyProtectionPct}
         perms={{
           create: hasPermission(ctx, "sales", "create"),

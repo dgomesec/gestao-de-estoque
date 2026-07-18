@@ -44,6 +44,11 @@ export const user = pgTable("user", {
   tenantId: text("tenantId"),
   // Super-usuário de plataforma: acessa o painel master e pode impersonar.
   isPlatformAdmin: boolean("isPlatformAdmin").notNull().default(false),
+  // 2FA (TOTP via app autenticador). `twoFactorEnabled` é gerenciado pelo plugin
+  // Better Auth (true após o usuário concluir a inscrição). `twoFactorRequired`
+  // é definido pelo admin para OBRIGAR o usuário a configurar o 2FA.
+  twoFactorEnabled: boolean("twoFactorEnabled").notNull().default(false),
+  twoFactorRequired: boolean("twoFactorRequired").notNull().default(false),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
@@ -86,6 +91,18 @@ export const verification = pgTable("verification", {
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").defaultNow(),
   updatedAt: timestamp("updatedAt").defaultNow(),
+})
+
+// Tabela do plugin twoFactor (Better Auth). Armazena o segredo TOTP e os
+// códigos de backup por usuário. Colunas em camelCase conforme o plugin espera.
+export const twoFactor = pgTable("twoFactor", {
+  id: text("id").primaryKey(),
+  secret: text("secret").notNull(),
+  backupCodes: text("backupCodes").notNull(),
+  userId: text("userId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  verified: boolean("verified").notNull().default(true),
 })
 
 // --- RBAC -------------------------------------------------------------------
@@ -283,6 +300,10 @@ export const settings = pgTable("settings", {
   manualRate: boolean("manualRate").notNull().default(false),
   // Additional percentage added to the final price for currency protection.
   currencyProtectionPct: numeric("currencyProtectionPct", { precision: 6, scale: 2 }).notNull().default("0"),
+  // Quando true, os valores em USD (custo original) aparecem na interface e a
+  // conversão USD->moeda usa a cotação. Quando false, o custo do produto é
+  // considerado já na moeda escolhida (taxa efetiva 1) e a UI oculta o USD.
+  showCostUsd: boolean("showCostUsd").notNull().default(true),
   rateUpdatedAt: timestamp("rateUpdatedAt").notNull().defaultNow(),
   // Source of the last successful auto rate ("awesomeapi" | "er-api" | "manual").
   rateSource: text("rateSource"),

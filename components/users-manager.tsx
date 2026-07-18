@@ -30,8 +30,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { Plus, MoreHorizontal, ShieldCheck, Trash2, UserCog } from "lucide-react"
-import { createUser, setUserRoles, deleteUser, type UserRow } from "@/app/actions/users"
+import { Plus, MoreHorizontal, ShieldCheck, ShieldAlert, ShieldX, Trash2, UserCog, RotateCcw } from "lucide-react"
+import {
+  createUser,
+  setUserRoles,
+  deleteUser,
+  setUserTwoFactorRequired,
+  resetUserTwoFactor,
+  type UserRow,
+} from "@/app/actions/users"
 import { formatDate } from "@/lib/format"
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
@@ -116,6 +123,30 @@ export function UsersManager({
     })
   }
 
+  function handleToggleRequired(u: UserRow) {
+    const next = !u.twoFactorRequired
+    startTransition(async () => {
+      try {
+        await setUserTwoFactorRequired(u.id, next)
+        toast.success(next ? "2FA agora é obrigatório para este usuário" : "2FA não é mais obrigatório")
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao atualizar 2FA")
+      }
+    })
+  }
+
+  function handleResetTwoFactor(u: UserRow) {
+    if (!confirm(`Redefinir (desativar) o 2FA de "${u.name}"? Ele precisará configurar novamente.`)) return
+    startTransition(async () => {
+      try {
+        await resetUserTwoFactor(u.id)
+        toast.success("2FA redefinido")
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao redefinir 2FA")
+      }
+    })
+  }
+
   return (
     <>
       {perms.create && (
@@ -135,6 +166,7 @@ export function UsersManager({
                 <TableRow>
                   <TableHead>Usuário</TableHead>
                   <TableHead>Papéis</TableHead>
+                  <TableHead>2FA</TableHead>
                   <TableHead>Criado em</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
@@ -167,6 +199,24 @@ export function UsersManager({
                         )}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {u.twoFactorEnabled ? (
+                        <Badge className="gap-1 bg-chart-2 text-white hover:bg-chart-2">
+                          <ShieldCheck className="size-3" aria-hidden="true" />
+                          Ativo
+                        </Badge>
+                      ) : u.twoFactorRequired ? (
+                        <Badge variant="outline" className="gap-1 border-destructive/40 text-destructive">
+                          <ShieldAlert className="size-3" aria-hidden="true" />
+                          Pendente
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 text-muted-foreground">
+                          <ShieldX className="size-3" aria-hidden="true" />
+                          Inativo
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDate(u.createdAt)}
                     </TableCell>
@@ -185,6 +235,27 @@ export function UsersManager({
                               <DropdownMenuItem onClick={() => openRoles(u)}>
                                 <UserCog className="mr-2 size-4" />
                                 Gerenciar papéis
+                              </DropdownMenuItem>
+                            )}
+                            {perms.update && (
+                              <DropdownMenuItem onClick={() => handleToggleRequired(u)}>
+                                {u.twoFactorRequired ? (
+                                  <>
+                                    <ShieldX className="mr-2 size-4" />
+                                    Dispensar 2FA
+                                  </>
+                                ) : (
+                                  <>
+                                    <ShieldAlert className="mr-2 size-4" />
+                                    Exigir 2FA
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                            )}
+                            {perms.update && u.twoFactorEnabled && (
+                              <DropdownMenuItem onClick={() => handleResetTwoFactor(u)}>
+                                <RotateCcw className="mr-2 size-4" />
+                                Redefinir 2FA
                               </DropdownMenuItem>
                             )}
                             {perms.delete && u.id !== currentUserId && (

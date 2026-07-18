@@ -29,6 +29,9 @@ export type Settings = {
   exchangeRate: number
   manualRate: boolean
   currencyProtectionPct: number
+  // Quando false, o custo é tratado já na moeda escolhida (sem conversão de USD)
+  // e a interface oculta os valores em dólar.
+  showCostUsd: boolean
   rateUpdatedAt: Date
   rateSource: string | null
   rateCheckedAt: Date | null
@@ -106,6 +109,7 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
       exchangeRate: 5,
       manualRate: false,
       currencyProtectionPct: 0,
+      showCostUsd: true,
       rateUpdatedAt: new Date(),
       rateSource: null,
       rateCheckedAt: null,
@@ -121,6 +125,7 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
     exchangeRate: Number(row.exchangeRate),
     manualRate: row.manualRate,
     currencyProtectionPct: Number(row.currencyProtectionPct),
+    showCostUsd: row.showCostUsd,
     rateUpdatedAt: row.rateUpdatedAt,
     rateSource: row.rateSource ?? null,
     rateCheckedAt: row.rateCheckedAt ?? null,
@@ -145,6 +150,11 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
 export async function getEffectiveRate(force = false, tenantId?: string | null): Promise<Settings> {
   const tid = await resolveTenantId(tenantId)
   const current = await getSettings(tid)
+  // USD oculto: o custo já está na moeda escolhida, então não há conversão
+  // (taxa efetiva 1) e não faz sentido consultar a cotação externa.
+  if (!current.showCostUsd) {
+    return { ...current, exchangeRate: 1 }
+  }
   // Dólar como moeda de exibição: a taxa é sempre 1, sem consulta externa.
   if (current.displayCurrency === 'USD') {
     return { ...current, exchangeRate: 1 }

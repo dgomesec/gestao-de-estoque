@@ -22,6 +22,7 @@ import {
   Menu,
   X,
   ArrowLeft,
+  Lock,
 } from 'lucide-react'
 
 type NavItem = { href: string; label: string; resource: string }
@@ -151,6 +152,22 @@ export function Sidebar({
                 </li>
               )
             })}
+            {/* Segurança: autosserviço disponível para qualquer usuário. */}
+            <li>
+              <Link
+                href="/seguranca"
+                onClick={() => setOpen(false)}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  pathname === '/seguranca' || pathname.startsWith('/seguranca/')
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                )}
+              >
+                <Lock className="size-4 shrink-0" aria-hidden="true" />
+                Segurança
+              </Link>
+            </li>
           </ul>
         </nav>
 

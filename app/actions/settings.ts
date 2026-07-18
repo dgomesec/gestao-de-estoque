@@ -15,13 +15,17 @@ export async function updateSettings(input: {
   exchangeRate: number
   manualRate: boolean
   currencyProtectionPct: number
+  showCostUsd: boolean
 }) {
   const ctx = await requirePermission("settings", "update")
 
   const currency = toDisplayCurrency(input.displayCurrency)
-  // Dólar: a taxa é sempre 1. Nas demais moedas exige valor válido.
-  const exchangeRate = currency === "USD" ? 1 : input.exchangeRate
-  const manualRate = currency === "USD" ? true : input.manualRate
+  const showCostUsd = input.showCostUsd
+  // USD oculto: o custo já está na moeda escolhida (taxa 1, sem conversão).
+  // Dólar como moeda: a taxa também é sempre 1. Nas demais, exige valor válido.
+  const exchangeRate = !showCostUsd || currency === "USD" ? 1 : input.exchangeRate
+  // Sem conversão de USD, o câmbio é fixo (manual) — não há o que buscar ao vivo.
+  const manualRate = !showCostUsd || currency === "USD" ? true : input.manualRate
 
   if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
     throw new Error("Cotação inválida")
@@ -37,15 +41,16 @@ export async function updateSettings(input: {
       exchangeRate: String(exchangeRate),
       manualRate,
       currencyProtectionPct: String(input.currencyProtectionPct),
+      showCostUsd,
       rateUpdatedAt: new Date(),
       // Zera a checagem para forçar nova busca ao vivo na moeda escolhida.
       rateCheckedAt: null,
     })
     .where(eq(settings.tenantId, ctx.tenantId))
 
-  // Em modo automático (BRL/EUR), busca a cotação correta da nova moeda.
+  // Em modo automático (BRL/EUR com USD visível), busca a cotação correta.
   let effectiveRate = exchangeRate
-  if (!manualRate && currency !== "USD") {
+  if (showCostUsd && !manualRate && currency !== "USD") {
     const refreshed = await getEffectiveRate(true, ctx.tenantId)
     effectiveRate = refreshed.exchangeRate
   }

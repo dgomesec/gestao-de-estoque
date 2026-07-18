@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth"
+import { twoFactor } from "better-auth/plugins"
 import { pool, db } from "@/lib/db"
 import { user as userTable } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
@@ -17,6 +18,12 @@ export const auth = betterAuth({
     enabled: true,
     autoSignIn: true,
   },
+  plugins: [
+    twoFactor({
+      // Nome exibido no aplicativo autenticador (Google/Microsoft Authenticator).
+      issuer: "Rareon Inventory Control",
+    }),
+  ],
   trustedOrigins: [
     ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
