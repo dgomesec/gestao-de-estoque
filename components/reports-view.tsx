@@ -46,7 +46,7 @@ import { getSalesReport, getSalesReportByRange, type SalesReport } from "@/app/a
 import { deleteGoal, type GoalProgress } from "@/app/actions/goals"
 import { formatMoney, formatUSD, formatDateTime, formatPct, type DisplayCurrency } from "@/lib/format"
 
-const STOCK_PAGE_SIZE = 8
+const STOCK_PAGE_SIZE = 25
 
 const PERIODS = [
   { value: "7", label: "Últimos 7 dias" },

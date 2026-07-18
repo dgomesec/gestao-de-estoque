@@ -300,6 +300,10 @@ export const settings = pgTable("settings", {
   manualRate: boolean("manualRate").notNull().default(false),
   // Additional percentage added to the final price for currency protection.
   currencyProtectionPct: numeric("currencyProtectionPct", { precision: 6, scale: 2 }).notNull().default("0"),
+  // Quando true, os valores em USD (custo original) aparecem na interface e a
+  // conversão USD->moeda usa a cotação. Quando false, o custo do produto é
+  // considerado já na moeda escolhida (taxa efetiva 1) e a UI oculta o USD.
+  showCostUsd: boolean("showCostUsd").notNull().default(true),
   rateUpdatedAt: timestamp("rateUpdatedAt").notNull().defaultNow(),
   // Source of the last successful auto rate ("awesomeapi" | "er-api" | "manual").
   rateSource: text("rateSource"),

@@ -91,16 +91,22 @@ export function ProductsManager({
   products,
   rate,
   currency = "BRL",
+  showCostUsd = true,
   protectionPct,
   perms,
 }: {
   products: Product[]
   rate: number
   currency?: DisplayCurrency
+  showCostUsd?: boolean
   protectionPct: number
   perms: Perms
 }) {
   const fmt = (v: number) => formatMoney(v, currency)
+  // Quando o USD está oculto, o custo é informado direto na moeda escolhida;
+  // o campo de custo e as colunas passam a exibir/rotular nessa moeda.
+  const costLabel = showCostUsd ? "USD" : currency
+  const fmtCost = (v: number) => (showCostUsd ? formatUSD(v) : fmt(v))
   const [query, setQuery] = useState("")
   const [colorFilter, setColorFilter] = useState<string>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -361,7 +367,7 @@ export function ProductsManager({
                   )}
                   <TableHead>Produto</TableHead>
                   <TableHead className="text-right">Qtd.</TableHead>
-                  <TableHead className="text-right">Custo USD</TableHead>
+                  {showCostUsd && <TableHead className="text-right">Custo USD</TableHead>}
                   <TableHead className="text-right">Custo {currency}</TableHead>
                   <TableHead className="text-right">Faixa de venda ({currency})</TableHead>
                   <TableHead className="w-12" />
@@ -370,7 +376,7 @@ export function ProductsManager({
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={perms.delete ? 7 : 6} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={(perms.delete ? 6 : 5) + (showCostUsd ? 1 : 0)} className="h-32 text-center text-muted-foreground">
                       Nenhum produto encontrado.
                     </TableCell>
                   </TableRow>
@@ -411,7 +417,9 @@ export function ProductsManager({
                             {p.quantity}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">{formatUSD(cost)}</TableCell>
+                        {showCostUsd && (
+                          <TableCell className="text-right tabular-nums">{formatUSD(cost)}</TableCell>
+                        )}
                         <TableCell className="text-right tabular-nums font-medium">{fmt(costBrl)}</TableCell>
                         <TableCell className="text-right tabular-nums text-sm">
                           {fmt(minBrl)} – {fmt(maxBrl)}
@@ -470,7 +478,9 @@ export function ProductsManager({
           <DialogHeader className="border-b px-6 py-4">
             <DialogTitle>{editing ? "Editar produto" : "Novo produto"}</DialogTitle>
             <DialogDescription>
-              Valores monetários em dólar (USD). O custo em real é calculado com a cotação do dia e a proteção cambial.
+              {showCostUsd
+                ? `Valores monetários em dólar (USD). O custo em ${currency} é calculado com a cotação do dia e a proteção cambial.`
+                : `Valores monetários em ${currency}. A proteção cambial é aplicada sobre o custo informado.`}
             </DialogDescription>
           </DialogHeader>
 
