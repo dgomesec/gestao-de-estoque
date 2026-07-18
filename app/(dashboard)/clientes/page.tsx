@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getAuthContext, hasPermission } from "@/lib/rbac"
 import { getCustomers } from "@/app/actions/customers"
+import { getSettings } from "@/lib/exchange"
 import { PageHeader } from "@/components/page-header"
 import { CustomersManager } from "@/components/customers-manager"
 import { CustomerImport } from "@/components/customer-import"
@@ -10,7 +11,7 @@ export default async function CustomersPage() {
   if (!ctx) redirect("/sign-in")
   if (!hasPermission(ctx, "customers", "view")) redirect("/dashboard")
 
-  const customers = await getCustomers()
+  const [customers, settings] = await Promise.all([getCustomers(), getSettings()])
   const canCreate = hasPermission(ctx, "customers", "create")
 
   return (
@@ -23,6 +24,7 @@ export default async function CustomersPage() {
       </PageHeader>
       <CustomersManager
         customers={customers}
+        currency={settings.displayCurrency}
         perms={{
           create: canCreate,
           update: hasPermission(ctx, "customers", "update"),
