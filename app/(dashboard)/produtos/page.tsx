@@ -21,6 +21,7 @@ export default async function ProductsPage() {
       <ProductsManager
         products={products}
         rate={settings.exchangeRate}
+        currency={settings.displayCurrency}
         protectionPct={settings.currencyProtectionPct}
         perms={{
           create: hasPermission(ctx, "products", "create"),

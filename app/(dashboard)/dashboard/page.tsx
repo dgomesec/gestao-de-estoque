@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { SalesTrendChart, TopProductsChart } from "@/components/dashboard-charts"
 import { GoalCard } from "@/components/goal-card"
-import { formatBRL, formatUSD, formatPct, formatDateTime } from "@/lib/format"
+import { formatMoney, formatUSD, formatPct, formatDateTime } from "@/lib/format"
 import {
   Package,
   Boxes,
@@ -36,20 +36,20 @@ export default async function DashboardPage() {
       icon: Package,
     },
     {
-      label: "Valor do estoque (BRL)",
-      value: formatBRL(data.stockValueBrl),
+      label: `Valor do estoque (${data.currency})`,
+      value: formatMoney(data.stockValueBrl, data.currency),
       hint: `${formatUSD(data.stockValueUsd)} em custo`,
       icon: Boxes,
     },
     {
       label: "Receita (30 dias)",
-      value: formatBRL(data.revenueBrl30d),
+      value: formatMoney(data.revenueBrl30d, data.currency),
       hint: `${data.salesCount30d} venda(s)`,
       icon: ShoppingCart,
     },
     {
       label: "Lucro (30 dias)",
-      value: formatBRL(data.profitBrl30d),
+      value: formatMoney(data.profitBrl30d, data.currency),
       hint: "Após câmbio e proteção",
       icon: TrendingUp,
     },
@@ -63,10 +63,16 @@ export default async function DashboardPage() {
       >
         <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 text-sm">
           <DollarSign className="size-3.5" aria-hidden="true" />
-          USD/BRL {data.rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
-          <span className="text-muted-foreground">
-            {data.manualRate ? "· manual" : "· automático"}
-          </span>
+          {data.currency === "USD" ? (
+            "Moeda: US$"
+          ) : (
+            <>
+              {`USD/${data.currency} ${data.rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}`}
+              <span className="text-muted-foreground">
+                {data.manualRate ? "· manual" : "· automático"}
+              </span>
+            </>
+          )}
         </Badge>
       </PageHeader>
 
@@ -88,12 +94,12 @@ export default async function DashboardPage() {
       </section>
 
       <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <GoalCard goal={goal} canEdit={canEditGoal} />
-        <SalesTrendChart data={data.salesByDay} />
+        <GoalCard goal={goal} canEdit={canEditGoal} currency={data.currency} />
+        <SalesTrendChart data={data.salesByDay} currency={data.currency} />
       </section>
 
       <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <TopProductsChart data={data.topProducts} />
+        <TopProductsChart data={data.topProducts} currency={data.currency} />
         <Card>
           <CardHeader className="flex flex-row items-center gap-2">
             <AlertTriangle className="size-4 text-chart-3" aria-hidden="true" />

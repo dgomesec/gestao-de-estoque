@@ -48,7 +48,7 @@ import { ProductImport } from "@/components/product-import"
 import { ColorTag } from "@/components/color-tag"
 import { ColorPicker } from "@/components/color-picker"
 import { detectColor, colorFromLabel } from "@/lib/colors"
-import { formatBRL, formatUSD, formatPct } from "@/lib/format"
+import { formatMoney, formatUSD, formatPct, currencySymbol, type DisplayCurrency } from "@/lib/format"
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Product = {
@@ -90,14 +90,17 @@ const EMPTY: ProductInput = {
 export function ProductsManager({
   products,
   rate,
+  currency = "BRL",
   protectionPct,
   perms,
 }: {
   products: Product[]
   rate: number
+  currency?: DisplayCurrency
   protectionPct: number
   perms: Perms
 }) {
+  const fmt = (v: number) => formatMoney(v, currency)
   const [query, setQuery] = useState("")
   const [colorFilter, setColorFilter] = useState<string>("all")
   const [dialogOpen, setDialogOpen] = useState(false)

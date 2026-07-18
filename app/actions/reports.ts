@@ -4,9 +4,11 @@ import { db } from "@/lib/db"
 import { products, sales, customers } from "@/lib/db/schema"
 import { requirePermission } from "@/lib/rbac"
 import { getEffectiveRate, computeBrl } from "@/lib/exchange"
+import type { DisplayCurrency } from "@/lib/format"
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm"
 
 export type DashboardData = {
+  currency: DisplayCurrency
   rate: number
   manualRate: boolean
   protectionPct: number
@@ -105,6 +107,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     .map((p) => ({ name: p.name, units: p.units, revenue: Math.round(p.revenue * 100) / 100 }))
 
   return {
+    currency: settings.displayCurrency,
     rate,
     manualRate: settings.manualRate,
     protectionPct,

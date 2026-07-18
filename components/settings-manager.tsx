@@ -6,6 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { toast } from "sonner"
 import { RefreshCw, Save, Upload, Trash2, Store } from "lucide-react"
 import {
@@ -15,7 +22,20 @@ import {
   uploadStoreLogo,
   removeStoreLogo,
 } from "@/app/actions/settings"
-import { formatBRL, formatDateTime, formatPct } from "@/lib/format"
+import {
+  formatMoney,
+  formatDateTime,
+  formatPct,
+  currencySymbol,
+  toDisplayCurrency,
+  type DisplayCurrency,
+} from "@/lib/format"
+
+const CURRENCY_OPTIONS: { value: DisplayCurrency; label: string }[] = [
+  { value: "BRL", label: "Real brasileiro (R$)" },
+  { value: "USD", label: "Dólar americano (US$)" },
+  { value: "EUR", label: "Euro (€)" },
+]
 
 type StoreFields = {
   storeName: string | null
@@ -31,6 +51,7 @@ export function SettingsManager({
   canEdit,
 }: {
   initial: {
+    displayCurrency: DisplayCurrency
     exchangeRate: number
     manualRate: boolean
     currencyProtectionPct: number
@@ -39,11 +60,18 @@ export function SettingsManager({
   store: StoreFields
   canEdit: boolean
 }) {
+  const [currency, setCurrency] = useState<DisplayCurrency>(
+    toDisplayCurrency(initial.displayCurrency),
+  )
   const [rate, setRate] = useState(initial.exchangeRate)
   const [manual, setManual] = useState(initial.manualRate)
   const [protection, setProtection] = useState(initial.currencyProtectionPct)
   const [updatedAt, setUpdatedAt] = useState(initial.rateUpdatedAt)
   const [isPending, startTransition] = useTransition()
+
+  // Dólar como moeda de venda dispensa cotação (custo já está em USD).
+  const isUsd = currency === "USD"
+  const symbol = currencySymbol(currency)
 
   // Estado dos dados da loja.
   const [storeName, setStoreName] = useState(store.storeName ?? "")
@@ -98,17 +126,21 @@ export function SettingsManager({
   }
 
   function save() {
-    if (rate <= 0) {
+    if (!isUsd && rate <= 0) {
       toast.error("A cotação deve ser maior que zero")
       return
     }
     startTransition(async () => {
       try {
-        await updateSettings({
+        const res = await updateSettings({
+          displayCurrency: currency,
           exchangeRate: rate,
           manualRate: manual,
           currencyProtectionPct: protection,
         })
+        // Reflete a taxa efetiva (ex.: cotação ao vivo buscada no servidor).
+        if (typeof res.rate === "number") setRate(res.rate)
+        setUpdatedAt(new Date())
         toast.success("Configurações salvas")
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao salvar")
@@ -123,15 +155,16 @@ export function SettingsManager({
         setRate(res.rate)
         setManual(false)
         setUpdatedAt(new Date())
-        toast.success(`Cotação atualizada: ${formatBRL(res.rate)}`)
+        toast.success(`Cotação atualizada: ${symbol} ${res.rate}`)
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar cotação")
       }
     })
   }
 
-  // Exemplo demonstrativo: US$ 100 com configurações atuais.
-  const factor = rate * (1 + protection / 100)
+  // Exemplo demonstrativo: US$ 100 com configurações atuais. Em dólar, a taxa
+  // efetiva é 1 (sem conversão).
+  const effectiveRate = isUsd ? 1 : rate
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -255,52 +288,98 @@ export function SettingsManager({
 
         <Card>
           <CardHeader>
-            <CardTitle>Cotação do dólar (USD → BRL)</CardTitle>
+            <CardTitle>Moeda de venda</CardTitle>
             <CardDescription>
-              A cotação é buscada automaticamente. Ative o modo manual para fixar um valor.
+              Moeda usada para exibir preços, vendas e relatórios em todo o sistema. O custo dos
+              produtos continua sendo informado em dólar (US$) e convertido para a moeda escolhida.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5 sm:max-w-xs">
+              <Label htmlFor="currency">Moeda</Label>
+              <Select
+                value={currency}
+                onValueChange={(v) => setCurrency(toDisplayCurrency(v))}
+                disabled={!canEdit}
+              >
+                <SelectTrigger id="currency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Cotação do dólar (USD → {currency})</CardTitle>
+            <CardDescription>
+              {isUsd
+                ? "Com a venda em dólar não há conversão: o custo já está em US$."
+                : "A cotação é buscada automaticamente. Ative o modo manual para fixar um valor."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="manual">Cotação manual</Label>
-                <p className="text-sm text-muted-foreground">
-                  {manual
-                    ? "Valor fixo definido por você."
-                    : "Atualização automática pela API do dia."}
-                </p>
-              </div>
-              <Switch id="manual" checked={manual} onCheckedChange={setManual} disabled={!canEdit} />
-            </div>
+            {isUsd ? (
+              <p className="rounded-lg border bg-muted/50 p-4 text-sm text-muted-foreground">
+                Nenhuma cotação necessária — os valores são exibidos diretamente em dólar (US$ 1 = US$ 1).
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="manual">Cotação manual</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {manual
+                        ? "Valor fixo definido por você."
+                        : "Atualização automática pela API do dia."}
+                    </p>
+                  </div>
+                  <Switch
+                    id="manual"
+                    checked={manual}
+                    onCheckedChange={setManual}
+                    disabled={!canEdit}
+                  />
+                </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="rate">Cotação (R$ por US$ 1)</Label>
-                <Input
-                  id="rate"
-                  type="number"
-                  min={0}
-                  step="0.0001"
-                  value={rate}
-                  disabled={!canEdit || !manual}
-                  onChange={(e) => setRate(Math.max(0, Number(e.target.value)))}
-                />
-              </div>
-              <div className="flex items-end">
-                <Button
-                  variant="outline"
-                  onClick={refresh}
-                  disabled={!canEdit || isPending}
-                  className="w-full gap-2"
-                >
-                  <RefreshCw className="size-4" aria-hidden="true" />
-                  Buscar cotação atual
-                </Button>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Última atualização: {formatDateTime(updatedAt)}
-            </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rate">Cotação ({symbol} por US$ 1)</Label>
+                    <Input
+                      id="rate"
+                      type="number"
+                      min={0}
+                      step="0.0001"
+                      value={rate}
+                      disabled={!canEdit || !manual}
+                      onChange={(e) => setRate(Math.max(0, Number(e.target.value)))}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      variant="outline"
+                      onClick={refresh}
+                      disabled={!canEdit || isPending}
+                      className="w-full gap-2"
+                    >
+                      <RefreshCw className="size-4" aria-hidden="true" />
+                      Buscar cotação atual
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Última atualização: {formatDateTime(updatedAt)}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -308,7 +387,7 @@ export function SettingsManager({
           <CardHeader>
             <CardTitle>Proteção cambial</CardTitle>
             <CardDescription>
-              Percentual adicional aplicado sobre o preço final em real para proteger contra variação do dólar.
+              Percentual adicional aplicado sobre o preço final para proteger contra variação cambial.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -344,7 +423,7 @@ export function SettingsManager({
           <div className="flex justify-between">
             <span className="text-muted-foreground">Cotação</span>
             <span className="tabular-nums">
-              {rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
+              {isUsd ? "1,0000" : rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
             </span>
           </div>
           <div className="flex justify-between">
@@ -353,11 +432,13 @@ export function SettingsManager({
           </div>
           <div className="flex justify-between border-t pt-3">
             <span className="text-muted-foreground">US$ 100 sem proteção</span>
-            <span className="tabular-nums">{formatBRL(100 * rate)}</span>
+            <span className="tabular-nums">{formatMoney(100 * effectiveRate, currency)}</span>
           </div>
           <div className="flex justify-between">
             <span className="font-medium">US$ 100 final</span>
-            <span className="font-medium tabular-nums">{formatBRL(100 * factor)}</span>
+            <span className="font-medium tabular-nums">
+              {formatMoney(100 * effectiveRate * (1 + protection / 100), currency)}
+            </span>
           </div>
         </CardContent>
       </Card>

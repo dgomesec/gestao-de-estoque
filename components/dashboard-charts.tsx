@@ -21,13 +21,16 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { formatBRL } from "@/lib/format"
+import { formatMoney, currencySymbol, type DisplayCurrency } from "@/lib/format"
 
 export function SalesTrendChart({
   data,
+  currency = "BRL",
 }: {
   data: { date: string; revenue: number; profit: number }[]
+  currency?: DisplayCurrency
 }) {
+  const sym = currencySymbol(currency)
   const formatted = data.map((d) => ({
     ...d,
     label: new Date(d.date + "T00:00:00").toLocaleDateString("pt-BR", {
@@ -40,7 +43,7 @@ export function SalesTrendChart({
     <Card>
       <CardHeader>
         <CardTitle>Receita e lucro (30 dias)</CardTitle>
-        <CardDescription>Valores em BRL por dia</CardDescription>
+        <CardDescription>Valores em {currency} por dia</CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer
@@ -75,10 +78,10 @@ export function SalesTrendChart({
               axisLine={false}
               width={48}
               fontSize={11}
-              tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
+              tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`}
             />
             <ChartTooltip
-              content={<ChartTooltipContent formatter={(v, n) => [formatBRL(Number(v)), n === "revenue" ? " Receita" : " Lucro"]} />}
+              content={<ChartTooltipContent formatter={(v, n) => [formatMoney(Number(v), currency), n === "revenue" ? " Receita" : " Lucro"]} />}
             />
             <Area
               dataKey="revenue"
@@ -103,14 +106,17 @@ export function SalesTrendChart({
 
 export function TopProductsChart({
   data,
+  currency = "BRL",
 }: {
   data: { name: string; units: number; revenue: number }[]
+  currency?: DisplayCurrency
 }) {
+  const sym = currencySymbol(currency)
   return (
     <Card>
       <CardHeader>
         <CardTitle>Produtos mais vendidos (30 dias)</CardTitle>
-        <CardDescription>Por receita em BRL</CardDescription>
+        <CardDescription>Por receita em {currency}</CardDescription>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
@@ -129,7 +135,7 @@ export function TopProductsChart({
                 tickLine={false}
                 axisLine={false}
                 fontSize={11}
-                tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
+                tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`}
               />
               <YAxis
                 type="category"
@@ -140,7 +146,7 @@ export function TopProductsChart({
                 fontSize={11}
               />
               <ChartTooltip
-                content={<ChartTooltipContent formatter={(v) => formatBRL(Number(v))} />}
+                content={<ChartTooltipContent formatter={(v) => formatMoney(Number(v), currency)} />}
               />
               <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[0, 4, 4, 0]} />
             </BarChart>

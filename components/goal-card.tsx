@@ -16,7 +16,7 @@ import {
 import { toast } from "sonner"
 import { Target, Pencil } from "lucide-react"
 import { setGoal, type GoalProgress } from "@/app/actions/goals"
-import { formatBRL, formatPct } from "@/lib/format"
+import { formatMoney, formatPct, type DisplayCurrency } from "@/lib/format"
 
 function monthLabel(month: string) {
   const [y, m] = month.split("-").map(Number)
@@ -36,7 +36,15 @@ function ProgressBar({ pct }: { pct: number }) {
   )
 }
 
-export function GoalCard({ goal, canEdit }: { goal: GoalProgress; canEdit: boolean }) {
+export function GoalCard({
+  goal,
+  canEdit,
+  currency = "BRL",
+}: {
+  goal: GoalProgress
+  canEdit: boolean
+  currency?: DisplayCurrency
+}) {
   const [open, setOpen] = useState(false)
   const [revenue, setRevenue] = useState(goal.revenueTargetBrl)
   const [profit, setProfit] = useState(goal.profitTargetBrl)
@@ -79,7 +87,7 @@ export function GoalCard({ goal, canEdit }: { goal: GoalProgress; canEdit: boole
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Receita</span>
                 <span className="tabular-nums font-medium">
-                  {formatBRL(goal.revenueActualBrl)} / {formatBRL(goal.revenueTargetBrl)}
+                  {formatMoney(goal.revenueActualBrl, currency)} / {formatMoney(goal.revenueTargetBrl, currency)}
                 </span>
               </div>
               <ProgressBar pct={goal.revenuePct} />
@@ -91,7 +99,7 @@ export function GoalCard({ goal, canEdit }: { goal: GoalProgress; canEdit: boole
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Lucro</span>
                 <span className="tabular-nums font-medium">
-                  {formatBRL(goal.profitActualBrl)} / {formatBRL(goal.profitTargetBrl)}
+                  {formatMoney(goal.profitActualBrl, currency)} / {formatMoney(goal.profitTargetBrl, currency)}
                 </span>
               </div>
               <ProgressBar pct={goal.profitPct} />
@@ -108,12 +116,12 @@ export function GoalCard({ goal, canEdit }: { goal: GoalProgress; canEdit: boole
           <DialogHeader>
             <DialogTitle>Metas de {monthLabel(goal.month)}</DialogTitle>
             <DialogDescription>
-              Defina os objetivos de receita e lucro (em reais) para o mês.
+              Defina os objetivos de receita e lucro (em {currency}) para o mês.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="grev">Meta de receita (BRL)</Label>
+              <Label htmlFor="grev">Meta de receita ({currency})</Label>
               <Input
                 id="grev"
                 type="number"
@@ -124,7 +132,7 @@ export function GoalCard({ goal, canEdit }: { goal: GoalProgress; canEdit: boole
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="gprof">Meta de lucro (BRL)</Label>
+              <Label htmlFor="gprof">Meta de lucro ({currency})</Label>
               <Input
                 id="gprof"
                 type="number"
