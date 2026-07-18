@@ -5,18 +5,25 @@ import { settings } from "@/lib/db/schema"
 import { requirePermission } from "@/lib/rbac"
 import { logAudit } from "@/lib/audit"
 import { getEffectiveRate } from "@/lib/exchange"
+import { toDisplayCurrency, currencySymbol } from "@/lib/format"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { put, del } from "@vercel/blob"
 
 export async function updateSettings(input: {
+  displayCurrency: string
   exchangeRate: number
   manualRate: boolean
   currencyProtectionPct: number
 }) {
   const ctx = await requirePermission("settings", "update")
 
-  if (!Number.isFinite(input.exchangeRate) || input.exchangeRate <= 0) {
+  const currency = toDisplayCurrency(input.displayCurrency)
+  // Dólar: a taxa é sempre 1. Nas demais moedas exige valor válido.
+  const exchangeRate = currency === "USD" ? 1 : input.exchangeRate
+  const manualRate = currency === "USD" ? true : input.manualRate
+
+  if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
     throw new Error("Cotação inválida")
   }
   if (!Number.isFinite(input.currencyProtectionPct) || input.currencyProtectionPct < 0) {
@@ -26,12 +33,22 @@ export async function updateSettings(input: {
   await db
     .update(settings)
     .set({
-      exchangeRate: String(input.exchangeRate),
-      manualRate: input.manualRate,
+      displayCurrency: currency,
+      exchangeRate: String(exchangeRate),
+      manualRate,
       currencyProtectionPct: String(input.currencyProtectionPct),
       rateUpdatedAt: new Date(),
+      // Zera a checagem para forçar nova busca ao vivo na moeda escolhida.
+      rateCheckedAt: null,
     })
     .where(eq(settings.tenantId, ctx.tenantId))
+
+  // Em modo automático (BRL/EUR), busca a cotação correta da nova moeda.
+  let effectiveRate = exchangeRate
+  if (!manualRate && currency !== "USD") {
+    const refreshed = await getEffectiveRate(true, ctx.tenantId)
+    effectiveRate = refreshed.exchangeRate
+  }
 
   await logAudit({
     action: "update",
@@ -40,15 +57,15 @@ export async function updateSettings(input: {
     userId: ctx.user.id,
     userName: ctx.user.name,
     userEmail: ctx.user.email,
-    summary: `Configurações atualizadas (câmbio ${input.manualRate ? "manual" : "automático"}: R$ ${input.exchangeRate}, proteção ${input.currencyProtectionPct}%)`,
-    metadata: { ...input },
+    summary: `Configurações atualizadas (moeda ${currency}, câmbio ${manualRate ? "manual" : "automático"}: ${currencySymbol(currency)} ${effectiveRate}, proteção ${input.currencyProtectionPct}%)`,
+    metadata: { ...input, currency, effectiveRate },
   })
 
   revalidatePath("/configuracoes")
   revalidatePath("/produtos")
   revalidatePath("/vendas")
   revalidatePath("/dashboard")
-  return { ok: true }
+  return { ok: true, displayCurrency: currency, rate: effectiveRate }
 }
 
 /**

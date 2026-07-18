@@ -1,7 +1,9 @@
 // Detecção de cor a partir do nome do produto.
-// Os produtos têm a cor escrita em inglês no nome (ex.: "iPhone 15 Midnight Blue").
-// Aqui mapeamos os termos em inglês para um rótulo em português e uma cor de
-// exibição (hex) usada nas tags/variações de cor.
+// Os produtos podem ter a cor escrita em INGLÊS (ex.: "iPhone 15 Midnight Blue")
+// ou em PORTUGUÊS (ex.: "Lâmpada Farol H4 Azul", "Capacete Preto/Verm").
+// Aqui mapeamos cada termo (nos dois idiomas, incluindo abreviações comuns de
+// tabelas de preço) para um rótulo em português e uma cor de exibição (hex)
+// usada nas tags/variações de cor.
 
 export type DetectedColor = { key: string; label: string; hex: string }
 
@@ -9,6 +11,7 @@ export type DetectedColor = { key: string; label: string; hex: string }
 // dos simples quando começam na mesma posição). O match real prioriza a
 // ocorrência mais à esquerda no nome.
 const COLOR_MAP: Record<string, { label: string; hex: string }> = {
+  // --- Termos em inglês ---
   midnight: { label: "Meia-noite", hex: "#191970" },
   graphite: { label: "Grafite", hex: "#383838" },
   charcoal: { label: "Carvão", hex: "#36454f" },
@@ -49,6 +52,59 @@ const COLOR_MAP: Record<string, { label: string; hex: string }> = {
   pink: { label: "Rosa", hex: "#ec4899" },
   rose: { label: "Rosé", hex: "#e11d68" },
   red: { label: "Vermelho", hex: "#ef4444" },
+
+  // --- Termos em português (e variações de gênero/plural) ---
+  preto: { label: "Preto", hex: "#111111" },
+  preta: { label: "Preto", hex: "#111111" },
+  pretos: { label: "Preto", hex: "#111111" },
+  pretas: { label: "Preto", hex: "#111111" },
+  branco: { label: "Branco", hex: "#f4f4f5" },
+  branca: { label: "Branco", hex: "#f4f4f5" },
+  brancos: { label: "Branco", hex: "#f4f4f5" },
+  brancas: { label: "Branco", hex: "#f4f4f5" },
+  vermelho: { label: "Vermelho", hex: "#ef4444" },
+  vermelha: { label: "Vermelho", hex: "#ef4444" },
+  vermelhos: { label: "Vermelho", hex: "#ef4444" },
+  vermelhas: { label: "Vermelho", hex: "#ef4444" },
+  azul: { label: "Azul", hex: "#3b82f6" },
+  azuis: { label: "Azul", hex: "#3b82f6" },
+  marinho: { label: "Azul-marinho", hex: "#1e3a5f" },
+  verde: { label: "Verde", hex: "#22c55e" },
+  verdes: { label: "Verde", hex: "#22c55e" },
+  amarelo: { label: "Amarelo", hex: "#eab308" },
+  amarela: { label: "Amarelo", hex: "#eab308" },
+  laranja: { label: "Laranja", hex: "#f97316" },
+  roxo: { label: "Roxo", hex: "#a855f7" },
+  roxa: { label: "Roxo", hex: "#a855f7" },
+  violeta: { label: "Violeta", hex: "#8b5cf6" },
+  rosa: { label: "Rosa", hex: "#ec4899" },
+  cinza: { label: "Cinza", hex: "#6b7280" },
+  cinzas: { label: "Cinza", hex: "#6b7280" },
+  chumbo: { label: "Cinza", hex: "#6b7280" },
+  grafite: { label: "Grafite", hex: "#383838" },
+  prata: { label: "Prata", hex: "#c0c0c0" },
+  prateado: { label: "Prata", hex: "#c0c0c0" },
+  prateada: { label: "Prata", hex: "#c0c0c0" },
+  dourado: { label: "Dourado", hex: "#d4af37" },
+  dourada: { label: "Dourado", hex: "#d4af37" },
+  ouro: { label: "Dourado", hex: "#d4af37" },
+  marrom: { label: "Marrom", hex: "#92400e" },
+  bege: { label: "Bege", hex: "#d8c3a5" },
+  creme: { label: "Creme", hex: "#e8e0c5" },
+  vinho: { label: "Bordô", hex: "#800020" },
+  bordo: { label: "Bordô", hex: "#800020" },
+  turquesa: { label: "Turquesa", hex: "#40e0d0" },
+  champanhe: { label: "Champanhe", hex: "#f7e7ce" },
+
+  // --- Abreviações comuns em tabelas de preço ---
+  verm: { label: "Vermelho", hex: "#ef4444" },
+  vrm: { label: "Vermelho", hex: "#ef4444" },
+  pto: { label: "Preto", hex: "#111111" },
+  pta: { label: "Preto", hex: "#111111" },
+  bco: { label: "Branco", hex: "#f4f4f5" },
+  bca: { label: "Branco", hex: "#f4f4f5" },
+  amrl: { label: "Amarelo", hex: "#eab308" },
+  amar: { label: "Amarelo", hex: "#eab308" },
 }
 
 /**

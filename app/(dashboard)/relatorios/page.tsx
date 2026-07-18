@@ -46,6 +46,7 @@ export default async function ReportsPage() {
         goals={goals}
         stockRows={stockRows}
         stockTotalBrl={stockTotalBrl}
+        currency={settings.displayCurrency}
         canDeleteGoals={hasPermission(ctx, "reports", "delete")}
       />
     </>

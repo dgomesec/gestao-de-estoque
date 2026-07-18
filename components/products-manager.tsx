@@ -48,7 +48,7 @@ import { ProductImport } from "@/components/product-import"
 import { ColorTag } from "@/components/color-tag"
 import { ColorPicker } from "@/components/color-picker"
 import { detectColor, colorFromLabel } from "@/lib/colors"
-import { formatBRL, formatUSD, formatPct } from "@/lib/format"
+import { formatMoney, formatUSD, formatPct, type DisplayCurrency } from "@/lib/format"
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Product = {
@@ -90,14 +90,17 @@ const EMPTY: ProductInput = {
 export function ProductsManager({
   products,
   rate,
+  currency = "BRL",
   protectionPct,
   perms,
 }: {
   products: Product[]
   rate: number
+  currency?: DisplayCurrency
   protectionPct: number
   perms: Perms
 }) {
+  const fmt = (v: number) => formatMoney(v, currency)
   const [query, setQuery] = useState("")
   const [colorFilter, setColorFilter] = useState<string>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -359,8 +362,8 @@ export function ProductsManager({
                   <TableHead>Produto</TableHead>
                   <TableHead className="text-right">Qtd.</TableHead>
                   <TableHead className="text-right">Custo USD</TableHead>
-                  <TableHead className="text-right">Custo BRL</TableHead>
-                  <TableHead className="text-right">Faixa de venda (BRL)</TableHead>
+                  <TableHead className="text-right">Custo {currency}</TableHead>
+                  <TableHead className="text-right">Faixa de venda ({currency})</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
@@ -409,9 +412,9 @@ export function ProductsManager({
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{formatUSD(cost)}</TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">{formatBRL(costBrl)}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">{fmt(costBrl)}</TableCell>
                         <TableCell className="text-right tabular-nums text-sm">
-                          {formatBRL(minBrl)} – {formatBRL(maxBrl)}
+                          {fmt(minBrl)} – {fmt(maxBrl)}
                         </TableCell>
                         <TableCell>
                           {(perms.update || perms.delete) && (
@@ -566,22 +569,24 @@ export function ProductsManager({
             <div className="rounded-lg border bg-muted/40 p-3 text-sm">
               <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  Cotação USD/BRL {rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
+                  {currency === "USD"
+                    ? "Venda em dólar (US$)"
+                    : `Cotação USD/${currency} ${rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}`}
                 </span>
                 <span>Proteção cambial {formatPct(protectionPct)}</span>
               </div>
               <dl className="space-y-1">
                 <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Custo final (BRL)</dt>
-                  <dd className="font-medium tabular-nums">{formatBRL(preview.costBrl)}</dd>
+                  <dt className="text-muted-foreground">Custo final ({currency})</dt>
+                  <dd className="font-medium tabular-nums">{fmt(preview.costBrl)}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Venda mínima (BRL)</dt>
-                  <dd className="tabular-nums">{formatBRL(preview.minBrl)}</dd>
+                  <dt className="text-muted-foreground">Venda mínima ({currency})</dt>
+                  <dd className="tabular-nums">{fmt(preview.minBrl)}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Venda máxima (BRL)</dt>
-                  <dd className="tabular-nums">{formatBRL(preview.maxBrl)}</dd>
+                  <dt className="text-muted-foreground">Venda máxima ({currency})</dt>
+                  <dd className="tabular-nums">{fmt(preview.maxBrl)}</dd>
                 </div>
               </dl>
             </div>

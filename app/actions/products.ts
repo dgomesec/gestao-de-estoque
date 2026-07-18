@@ -6,7 +6,7 @@ import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { detectColor, colorFromLabel, normalizeHex, nearestNamedColor } from '@/lib/colors'
+import { detectColors, colorFromLabel, normalizeHex, nearestNamedColor } from '@/lib/colors'
 
 /**
  * Resolve o par (rótulo, hex) a ser persistido para a cor de um produto.
@@ -31,8 +31,14 @@ function resolveColorFields(
   if (label) {
     return { color: label, colorHex: colorFromLabel(label)?.hex ?? null }
   }
-  const detected = detectColor(name)
-  return { color: detected?.label ?? null, colorHex: detected?.hex ?? null }
+  // Detecta TODAS as cores do nome (ex.: "Preto/Verm" -> "Preto, Vermelho"),
+  // em português ou inglês. O hex de exibição usa a primeira cor encontrada.
+  const detected = detectColors(name)
+  if (detected.length === 0) return { color: null, colorHex: null }
+  return {
+    color: detected.map((c) => c.label).join(', '),
+    colorHex: detected[0].hex,
+  }
 }
 
 export type ImportSource = 'manual' | 'batch' | 'ai'

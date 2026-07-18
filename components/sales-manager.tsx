@@ -47,7 +47,7 @@ import { registerSaleItems, convertOrder, deleteOrder, deleteOrders, updateOrder
 import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
 import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
-import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from "@/lib/format"
+import { formatMoney, formatUSD, formatDateTime, formatPct, formatSaleCode, type DisplayCurrency } from "@/lib/format"
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Sale = {
@@ -148,6 +148,7 @@ export function SalesManager({
   products,
   customers,
   rate,
+  currency = "BRL",
   protectionPct,
   perms,
 }: {
@@ -155,9 +156,12 @@ export function SalesManager({
   products: ProductOpt[]
   customers: CustomerOpt[]
   rate: number
+  currency?: DisplayCurrency
   protectionPct: number
   perms: Perms
 }) {
+  // Moeda de venda atual do tenant (para novas vendas e prévias no carrinho).
+  const fmt = (v: number) => formatMoney(v, currency)
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<SaleKind>("sale")
   const [cart, setCart] = useState<CartItem[]>([])
@@ -878,8 +882,8 @@ export function SalesManager({
                   <TableHead>Produtos</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead className="text-right">Qtd.</TableHead>
-                  <TableHead className="text-right">Total (BRL)</TableHead>
-                  <TableHead className="text-right">Lucro (BRL)</TableHead>
+                  <TableHead className="text-right">Total ({currency})</TableHead>
+                  <TableHead className="text-right">Lucro ({currency})</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
@@ -937,10 +941,10 @@ export function SalesManager({
                         </TableCell>
                         <TableCell className="align-top text-right tabular-nums">{o.totalQty}</TableCell>
                         <TableCell className="align-top text-right tabular-nums font-medium">
-                          {formatBRL(o.totalBrl)}
+                          {fmt(o.totalBrl)}
                         </TableCell>
                         <TableCell className="align-top text-right tabular-nums text-chart-2">
-                          {formatBRL(o.profitBrl)}
+                          {fmt(o.profitBrl)}
                         </TableCell>
                         <TableCell className="align-top">{renderActions(o)}</TableCell>
                       </TableRow>
@@ -1013,12 +1017,12 @@ export function SalesManager({
                           <span className="text-muted-foreground">
                             Total:{" "}
                             <span className="font-medium tabular-nums text-foreground">
-                              {formatBRL(o.totalBrl)}
+                              {fmt(o.totalBrl)}
                             </span>
                           </span>
                           <span className="text-muted-foreground">
                             Lucro:{" "}
-                            <span className="tabular-nums text-chart-2">{formatBRL(o.profitBrl)}</span>
+                            <span className="tabular-nums text-chart-2">{fmt(o.profitBrl)}</span>
                           </span>
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(o.createdAt)}</div>
@@ -1214,7 +1218,7 @@ export function SalesManager({
                         ) : (
                           <span className="text-muted-foreground">Dentro da faixa de margem</span>
                         )}
-                        <span className="font-medium tabular-nums">{formatBRL(lineBrl)}</span>
+                        <span className="font-medium tabular-nums">{fmt(lineBrl)}</span>
                       </div>
                     </div>
                   )
@@ -1251,7 +1255,7 @@ export function SalesManager({
             <div className="rounded-lg border p-3">
               <div className="flex items-center justify-between">
                 <Label htmlFor="mrate" className="text-sm">
-                  Cotação manual (USD/BRL)
+                  Cotação manual (USD/{currency})
                 </Label>
                 <input
                   id="mrate-toggle"
@@ -1290,12 +1294,12 @@ export function SalesManager({
                     <dd className="tabular-nums">{formatUSD(totals.totalUsd)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Total (BRL)</dt>
-                    <dd className="font-medium tabular-nums">{formatBRL(totals.totalBrl)}</dd>
+                    <dt className="text-muted-foreground">Total ({currency})</dt>
+                    <dd className="font-medium tabular-nums">{fmt(totals.totalBrl)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Lucro estimado (BRL)</dt>
-                    <dd className="tabular-nums text-chart-2">{formatBRL(totals.profitBrl)}</dd>
+                    <dt className="text-muted-foreground">Lucro estimado ({currency})</dt>
+                    <dd className="tabular-nums text-chart-2">{fmt(totals.profitBrl)}</dd>
                   </div>
                 </dl>
               </div>

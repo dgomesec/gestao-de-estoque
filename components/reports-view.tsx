@@ -24,7 +24,7 @@ import { toast } from "sonner"
 import { Download, TrendingUp, ShoppingCart, Boxes, Target, Trash2 } from "lucide-react"
 import { getSalesReport, getSalesReportByRange, type SalesReport } from "@/app/actions/reports"
 import { deleteGoal, type GoalProgress } from "@/app/actions/goals"
-import { formatBRL, formatUSD, formatDateTime, formatPct } from "@/lib/format"
+import { formatMoney, formatUSD, formatDateTime, formatPct, type DisplayCurrency } from "@/lib/format"
 
 const PERIODS = [
   { value: "7", label: "Últimos 7 dias" },
@@ -55,6 +55,7 @@ export function ReportsView({
   goals,
   stockRows,
   stockTotalBrl,
+  currency = "BRL",
   canDeleteGoals = false,
 }: {
   initialReport: SalesReport
@@ -62,8 +63,10 @@ export function ReportsView({
   goals: GoalProgress[]
   stockRows: StockRow[]
   stockTotalBrl: number
+  currency?: DisplayCurrency
   canDeleteGoals?: boolean
 }) {
+  const fmt = (v: number) => formatMoney(v, currency)
   const [days, setDays] = useState(initialDays)
   const [report, setReport] = useState(initialReport)
   const [from, setFrom] = useState("")
@@ -165,8 +168,8 @@ export function ReportsView({
   const kpis = [
     { label: "Vendas", value: String(report.rows.length), icon: ShoppingCart },
     { label: "Unidades vendidas", value: String(report.totalUnits), icon: Boxes },
-    { label: "Receita total", value: formatBRL(report.totalRevenueBrl), icon: TrendingUp },
-    { label: "Lucro total", value: formatBRL(report.totalProfitBrl), icon: TrendingUp },
+    { label: "Receita total", value: fmt(report.totalRevenueBrl), icon: TrendingUp },
+    { label: "Lucro total", value: fmt(report.totalProfitBrl), icon: TrendingUp },
   ]
 
   return (
@@ -205,7 +208,7 @@ export function ReportsView({
                         <TableRow key={g.month}>
                           <TableCell className="font-medium capitalize">{monthLabel(g.month)}</TableCell>
                           <TableCell className="text-right tabular-nums text-sm">
-                            {formatBRL(g.revenueActualBrl)} / {formatBRL(g.revenueTargetBrl)}
+                            {fmt(g.revenueActualBrl)} / {fmt(g.revenueTargetBrl)}
                           </TableCell>
                           <TableCell className="text-right">
                             <Badge variant={g.revenuePct >= 100 ? "secondary" : "outline"}>
@@ -213,7 +216,7 @@ export function ReportsView({
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right tabular-nums text-sm">
-                            {formatBRL(g.profitActualBrl)} / {formatBRL(g.profitTargetBrl)}
+                            {fmt(g.profitActualBrl)} / {fmt(g.profitTargetBrl)}
                           </TableCell>
                           <TableCell className="text-right">
                             <Badge variant={g.profitPct >= 100 ? "secondary" : "outline"}>
@@ -310,8 +313,8 @@ export function ReportsView({
                     <TableHead>Data</TableHead>
                     <TableHead>Produto</TableHead>
                     <TableHead className="text-right">Qtd.</TableHead>
-                    <TableHead className="text-right">Total BRL</TableHead>
-                    <TableHead className="text-right">Lucro BRL</TableHead>
+                    <TableHead className="text-right">Total {currency}</TableHead>
+                    <TableHead className="text-right">Lucro {currency}</TableHead>
                     <TableHead>Cliente</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -334,10 +337,10 @@ export function ReportsView({
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{r.quantity}</TableCell>
                         <TableCell className="text-right tabular-nums font-medium">
-                          {formatBRL(r.totalBrl)}
+                          {fmt(r.totalBrl)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-chart-2">
-                          {formatBRL(r.profitBrl)}
+                          {fmt(r.profitBrl)}
                         </TableCell>
                         <TableCell className="text-sm">{r.customer ?? "—"}</TableCell>
                       </TableRow>
@@ -356,7 +359,7 @@ export function ReportsView({
           <h2 className="text-lg font-semibold">
             Estoque{" "}
             <span className="text-sm font-normal text-muted-foreground">
-              · valor total {formatBRL(stockTotalBrl)}
+              · valor total {fmt(stockTotalBrl)}
             </span>
           </h2>
           <Button variant="outline" onClick={exportStock} className="gap-2" disabled={stockRows.length === 0}>
@@ -374,8 +377,8 @@ export function ReportsView({
                     <TableHead>Produto</TableHead>
                     <TableHead className="text-right">Qtd.</TableHead>
                     <TableHead className="text-right">Custo USD</TableHead>
-                    <TableHead className="text-right">Custo BRL</TableHead>
-                    <TableHead className="text-right">Valor em estoque (BRL)</TableHead>
+                    <TableHead className="text-right">Custo {currency}</TableHead>
+                    <TableHead className="text-right">Valor em estoque ({currency})</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -400,9 +403,9 @@ export function ReportsView({
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right tabular-nums">{formatUSD(r.costUsd)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatBRL(r.costBrl)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{fmt(r.costBrl)}</TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
-                            {formatBRL(r.stockValueBrl)}
+                            {fmt(r.stockValueBrl)}
                           </TableCell>
                         </TableRow>
                       )

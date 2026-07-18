@@ -38,7 +38,7 @@ import {
   type CustomerInput,
   type CustomerWithStats,
 } from "@/app/actions/customers"
-import { formatBRL, formatDate } from "@/lib/format"
+import { formatMoney, formatDate, type DisplayCurrency } from "@/lib/format"
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Perms = { create: boolean; update: boolean; delete: boolean }
@@ -58,9 +58,11 @@ const EMPTY: CustomerInput = {
 export function CustomersManager({
   customers,
   perms,
+  currency = "BRL",
 }: {
   customers: CustomerWithStats[]
   perms: Perms
+  currency?: DisplayCurrency
 }) {
   const [query, setQuery] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -214,7 +216,7 @@ export function CustomersManager({
                         <Badge variant={c.salesCount > 0 ? "secondary" : "outline"}>{c.salesCount}</Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-medium">
-                        {formatBRL(c.totalSpentBrl)}
+                        {formatMoney(c.totalSpentBrl, currency)}
                       </TableCell>
                       <TableCell>
                         {(perms.update || perms.delete) && (

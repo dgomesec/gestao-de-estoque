@@ -206,6 +206,9 @@ export const sales = pgTable("sales", {
   unitCostUsd: numeric("unitCostUsd", { precision: 12, scale: 2 }).notNull(),
   exchangeRate: numeric("exchangeRate", { precision: 10, scale: 4 }).notNull(),
   currencyProtectionPct: numeric("currencyProtectionPct", { precision: 6, scale: 2 }).notNull().default("0"),
+  // Moeda de venda/exibição no momento da venda ("BRL" | "USD" | "EUR").
+  // Preserva o rótulo correto do histórico caso o tenant troque de moeda depois.
+  currency: text("currency").notNull().default("BRL"),
   // Margem praticada (%) informada manualmente pelo vendedor.
   marginPct: numeric("marginPct", { precision: 8, scale: 2 }).notNull().default("0"),
   totalUsd: numeric("totalUsd", { precision: 14, scale: 2 }).notNull(),
@@ -270,7 +273,11 @@ export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
   // Tenant dono destas configurações (uma linha por tenant).
   tenantId: text("tenantId").notNull().unique(),
-  // Current USD -> BRL exchange rate used for cost calculations.
+  // Moeda de venda/exibição do tenant ("BRL" | "USD" | "EUR"). O custo dos
+  // produtos permanece em USD; esta é a moeda-alvo da conversão e da interface.
+  displayCurrency: text("displayCurrency").notNull().default("BRL"),
+  // Taxa de conversão de USD para a moeda de exibição (USD->displayCurrency).
+  // Para USD a taxa é sempre 1.
   exchangeRate: numeric("exchangeRate", { precision: 10, scale: 4 }).notNull().default("5"),
   // When true, the rate is locked to a manual value (not auto-updated).
   manualRate: boolean("manualRate").notNull().default(false),
