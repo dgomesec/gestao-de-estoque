@@ -1,7 +1,18 @@
 "use client"
 
 import { createAuthClient } from "better-auth/react"
+import { twoFactorClient } from "better-auth/client/plugins"
 
-export const authClient = createAuthClient()
+export const authClient = createAuthClient({
+  plugins: [
+    twoFactorClient({
+      // Quando o login exige 2FA, o Better Auth interrompe a criação da sessão
+      // e chama este handler. Levamos o usuário ao desafio de verificação.
+      onTwoFactorRedirect() {
+        window.location.href = "/two-factor"
+      },
+    }),
+  ],
+})
 
-export const { signIn, signUp, signOut, useSession } = authClient
+export const { signIn, signUp, signOut, useSession, twoFactor } = authClient

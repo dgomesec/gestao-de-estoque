@@ -52,10 +52,15 @@ export function AuthForm({
         }
       }
     } else {
-      const { error } = await authClient.signIn.email({ email, password })
+      const { data, error } = await authClient.signIn.email({ email, password })
       if (error) {
         setLoading(false)
         setError(error.message ?? 'E-mail ou senha inválidos')
+        return
+      }
+      // Conta com 2FA ativo: o login não cria sessão ainda; o cliente redireciona
+      // para /two-factor via onTwoFactorRedirect. Evitamos navegar ao dashboard.
+      if ((data as { twoFactorRedirect?: boolean })?.twoFactorRedirect) {
         return
       }
     }

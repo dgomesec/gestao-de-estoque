@@ -28,6 +28,10 @@ export type AuthContext = {
   // Super-usuário DENTRO do tenant (admin do cliente).
   isSuperAdmin: boolean
   permissions: Set<string> // "resource:action"
+  // 2FA: se o usuário já concluiu a inscrição do app autenticador e se o admin
+  // exige 2FA para esta conta.
+  twoFactorEnabled: boolean
+  twoFactorRequired: boolean
 }
 
 /**
@@ -46,12 +50,19 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 
   // Carrega tenantId e flag de plataforma direto da tabela user (fonte de verdade).
   const [row] = await db
-    .select({ tenantId: userTable.tenantId, isPlatformAdmin: userTable.isPlatformAdmin })
+    .select({
+      tenantId: userTable.tenantId,
+      isPlatformAdmin: userTable.isPlatformAdmin,
+      twoFactorEnabled: userTable.twoFactorEnabled,
+      twoFactorRequired: userTable.twoFactorRequired,
+    })
     .from(userTable)
     .where(eq(userTable.id, user.id))
     .limit(1)
 
   const isPlatformAdmin = row?.isPlatformAdmin ?? false
+  const twoFactorEnabled = row?.twoFactorEnabled ?? false
+  const twoFactorRequired = row?.twoFactorRequired ?? false
 
   // Determina o tenant efetivo:
   // - Plataforma: tenant impersonado (resolvido do host/cookie), pode ser null.
@@ -74,6 +85,8 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     tenantId,
     tenant,
     isPlatformAdmin,
+    twoFactorEnabled,
+    twoFactorRequired,
   }
 
   // Sem tenant efetivo (plataforma no portal master): sem papéis de tenant.
