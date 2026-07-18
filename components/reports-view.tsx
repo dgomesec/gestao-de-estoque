@@ -78,6 +78,7 @@ export function ReportsView({
   stockRows,
   stockTotalBrl,
   currency = "BRL",
+  showCostUsd = true,
   canDeleteGoals = false,
 }: {
   initialReport: SalesReport
@@ -86,9 +87,11 @@ export function ReportsView({
   stockRows: StockRow[]
   stockTotalBrl: number
   currency?: DisplayCurrency
+  showCostUsd?: boolean
   canDeleteGoals?: boolean
 }) {
   const fmt = (v: number) => formatMoney(v, currency)
+  const fmtCost = (v: number) => (showCostUsd ? formatUSD(v) : fmt(v))
   const [days, setDays] = useState(initialDays)
   const [report, setReport] = useState(initialReport)
   const [from, setFrom] = useState("")
@@ -173,13 +176,22 @@ export function ReportsView({
   function exportSales() {
     downloadCsv(
       `relatorio-vendas-${days}d.csv`,
-      ["Data", "Produto", "SKU", "Quantidade", "Total USD", "Total BRL", "Lucro BRL", "Cliente"],
+      [
+        "Data",
+        "Produto",
+        "SKU",
+        "Quantidade",
+        ...(showCostUsd ? ["Total USD"] : []),
+        `Total ${currency}`,
+        `Lucro ${currency}`,
+        "Cliente",
+      ],
       report.rows.map((r) => [
         formatDateTime(r.createdAt),
         r.productName,
         r.sku,
         r.quantity,
-        r.totalUsd.toFixed(2),
+        ...(showCostUsd ? [r.totalUsd.toFixed(2)] : []),
         r.totalBrl.toFixed(2),
         r.profitBrl.toFixed(2),
         r.customer ?? "",
@@ -190,13 +202,21 @@ export function ReportsView({
   function exportStock() {
     downloadCsv(
       "relatorio-estoque.csv",
-      ["Produto", "SKU", "Quantidade", "Nivel reposicao", "Custo USD", `Custo ${currency}`, `Valor em estoque ${currency}`],
+      [
+        "Produto",
+        "SKU",
+        "Quantidade",
+        "Nivel reposicao",
+        ...(showCostUsd ? ["Custo USD"] : []),
+        `Custo ${currency}`,
+        `Valor em estoque ${currency}`,
+      ],
       stockRows.map((r) => [
         r.name,
         r.sku,
         r.quantity,
         r.reorderLevel,
-        r.costUsd.toFixed(2),
+        ...(showCostUsd ? [r.costUsd.toFixed(2)] : []),
         r.costBrl.toFixed(2),
         r.stockValueBrl.toFixed(2),
       ]),
@@ -255,17 +275,25 @@ export function ReportsView({
       "Relatório de estoque",
       `Valor total em estoque ${fmt(stockTotalBrl)} · gerado em ${formatDateTime(new Date())}`,
       "relatorio-estoque.pdf",
-      ["Produto", "SKU", "Qtd.", "Repor em", "Custo USD", `Custo ${currency}`, `Valor em estoque ${currency}`],
+      [
+        "Produto",
+        "SKU",
+        "Qtd.",
+        "Repor em",
+        ...(showCostUsd ? ["Custo USD"] : []),
+        `Custo ${currency}`,
+        `Valor em estoque ${currency}`,
+      ],
       stockRows.map((r) => [
         r.name,
         r.sku,
         r.quantity,
         r.reorderLevel,
-        formatUSD(r.costUsd),
+        ...(showCostUsd ? [formatUSD(r.costUsd)] : []),
         fmt(r.costBrl),
         fmt(r.stockValueBrl),
       ]),
-      [2, 3, 4, 5, 6],
+      showCostUsd ? [2, 3, 4, 5, 6] : [2, 3, 4, 5],
     )
   }
 
@@ -530,7 +558,7 @@ export function ReportsView({
                   <TableRow>
                     <TableHead>Produto</TableHead>
                     <TableHead className="text-right">Qtd.</TableHead>
-                    <TableHead className="text-right">Custo USD</TableHead>
+                    {showCostUsd && <TableHead className="text-right">Custo USD</TableHead>}
                     <TableHead className="text-right">Custo {currency}</TableHead>
                     <TableHead className="text-right">Valor em estoque ({currency})</TableHead>
                   </TableRow>
@@ -538,7 +566,7 @@ export function ReportsView({
                 <TableBody>
                   {filteredStock.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={showCostUsd ? 5 : 4} className="h-24 text-center text-muted-foreground">
                         {stockSearch ? "Nenhum produto encontrado." : "Nenhum produto cadastrado."}
                       </TableCell>
                     </TableRow>
@@ -556,7 +584,9 @@ export function ReportsView({
                               {r.quantity}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">{formatUSD(r.costUsd)}</TableCell>
+                          {showCostUsd && (
+                            <TableCell className="text-right tabular-nums">{formatUSD(r.costUsd)}</TableCell>
+                          )}
                           <TableCell className="text-right tabular-nums">{fmt(r.costBrl)}</TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
                             {fmt(r.stockValueBrl)}

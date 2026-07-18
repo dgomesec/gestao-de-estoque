@@ -195,7 +195,7 @@ export function ProductsManager({
       return
     }
     if (form.priceUsd <= 0) {
-      toast.error("O preço em USD deve ser maior que zero")
+      toast.error(`O preço de custo em ${costLabel} deve ser maior que zero`)
       return
     }
     if (form.marginMin > form.marginMax) {
@@ -529,7 +529,7 @@ export function ProductsManager({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="price">Preço de custo (USD)</Label>
+                <Label htmlFor="price">Preço de custo ({costLabel})</Label>
                 <Input
                   id="price"
                   type="number"
@@ -579,9 +579,11 @@ export function ProductsManager({
             <div className="rounded-lg border bg-muted/40 p-3 text-sm">
               <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  {currency === "USD"
-                    ? "Venda em dólar (US$)"
-                    : `Cotação USD/${currency} ${rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}`}
+                  {!showCostUsd
+                    ? `Custo em ${currency}`
+                    : currency === "USD"
+                      ? "Venda em dólar (US$)"
+                      : `Cotação USD/${currency} ${rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}`}
                 </span>
                 <span>Proteção cambial {formatPct(protectionPct)}</span>
               </div>

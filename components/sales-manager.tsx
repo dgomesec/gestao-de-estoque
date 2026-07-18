@@ -149,6 +149,7 @@ export function SalesManager({
   customers,
   rate,
   currency = "BRL",
+  showCostUsd = true,
   protectionPct,
   perms,
 }: {
@@ -157,11 +158,15 @@ export function SalesManager({
   customers: CustomerOpt[]
   rate: number
   currency?: DisplayCurrency
+  showCostUsd?: boolean
   protectionPct: number
   perms: Perms
 }) {
   // Moeda de venda atual do tenant (para novas vendas e prévias no carrinho).
   const fmt = (v: number) => formatMoney(v, currency)
+  // Rótulo/formatação do custo unitário: em USD quando habilitado, senão na moeda.
+  const costLabel = showCostUsd ? "USD" : currency
+  const fmtCost = (v: number) => (showCostUsd ? formatUSD(v) : fmt(v))
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<SaleKind>("sale")
   const [cart, setCart] = useState<CartItem[]>([])
@@ -929,7 +934,7 @@ export function SalesManager({
                                   <ColorTag name={it.productName} />
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  SKU {it.sku ?? "—"} · {formatUSD(Number(it.unitPriceUsd))}/un · margem{" "}
+                                  SKU {it.sku ?? "—"} · {fmtCost(Number(it.unitPriceUsd))}/un · margem{" "}
                                   {formatPct(Number(it.marginPct))}
                                 </div>
                               </li>
@@ -1099,7 +1104,7 @@ export function SalesManager({
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{p.name}</span>
                             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <span className="truncate">SKU {p.sku} · {formatUSD(Number(p.priceUsd))}/un</span>
+                              <span className="truncate">SKU {p.sku} · {fmtCost(Number(p.priceUsd))}/un</span>
                               <ColorTag name={p.name} color={p.color} hex={p.colorHex} className="border-transparent px-0 py-0" showLabel={false} />
                             </span>
                           </span>
@@ -1166,7 +1171,7 @@ export function SalesManager({
                             <ColorTag name={item.name} color={item.color} hex={item.colorHex} className="border-transparent px-0 py-0" showLabel={false} />
                           </p>
                           <p className="truncate text-xs text-muted-foreground">
-                            SKU {item.sku} · custo {formatUSD(item.costUsd)} · {item.available} disp.
+                            SKU {item.sku} · custo {fmtCost(item.costUsd)} · {item.available} disp.
                           </p>
                         </div>
                         <Button
@@ -1200,7 +1205,7 @@ export function SalesManager({
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Preço un. (USD)</Label>
+                          <Label className="text-xs">Preço un. ({costLabel})</Label>
                           <Input
                             type="number"
                             min={0}
@@ -1252,47 +1257,53 @@ export function SalesManager({
               )}
             </div>
 
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="mrate" className="text-sm">
-                  Cotação manual (USD/{currency})
-                </Label>
-                <input
-                  id="mrate-toggle"
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={useManualRate}
-                  onChange={(e) => setUseManualRate(e.target.checked)}
-                  aria-label="Usar cotação manual"
+            {showCostUsd && currency !== "USD" && (
+              <div className="rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="mrate" className="text-sm">
+                    Cotação manual (USD/{currency})
+                  </Label>
+                  <input
+                    id="mrate-toggle"
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={useManualRate}
+                    onChange={(e) => setUseManualRate(e.target.checked)}
+                    aria-label="Usar cotação manual"
+                  />
+                </div>
+                <Input
+                  id="mrate"
+                  type="number"
+                  step="0.0001"
+                  className="mt-2"
+                  value={manualRate}
+                  disabled={!useManualRate}
+                  onChange={(e) => setManualRate(Math.max(0, Number(e.target.value)))}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {useManualRate
+                    ? "Esta operação usará a cotação informada acima."
+                    : `Usando a cotação do dia: ${rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}`}
+                </p>
               </div>
-              <Input
-                id="mrate"
-                type="number"
-                step="0.0001"
-                className="mt-2"
-                value={manualRate}
-                disabled={!useManualRate}
-                onChange={(e) => setManualRate(Math.max(0, Number(e.target.value)))}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {useManualRate
-                  ? "Esta operação usará a cotação informada acima."
-                  : `Usando a cotação do dia: ${rate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}`}
-              </p>
-            </div>
+            )}
 
             {cart.length > 0 && (
               <div className="rounded-lg border bg-muted/40 p-3 text-sm">
                 <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                   <span>{cart.length} produto(s)</span>
-                  <span>Cotação {effectiveRate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}</span>
+                  {showCostUsd && currency !== "USD" && (
+                    <span>Cotação {effectiveRate.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}</span>
+                  )}
                 </div>
                 <dl className="space-y-1">
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Total (USD)</dt>
-                    <dd className="tabular-nums">{formatUSD(totals.totalUsd)}</dd>
-                  </div>
+                  {showCostUsd && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Total (USD)</dt>
+                      <dd className="tabular-nums">{formatUSD(totals.totalUsd)}</dd>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Total ({currency})</dt>
                     <dd className="font-medium tabular-nums">{fmt(totals.totalBrl)}</dd>
