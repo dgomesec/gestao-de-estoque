@@ -25,6 +25,9 @@ export const tenants = pgTable("tenants", {
   // Mapa JSON de funcionalidades habilitadas por recurso, ex.:
   // {"products":true,"users":false,...}. Vazio = todas habilitadas.
   features: text("features").notNull().default("{}"),
+  // Segmento do cliente (ex: "eletronica", "joalheria"). Define quais campos
+  // aparecem no cadastro de produtos (cada segmento tem sua estrutura de dados).
+  segment: text("segment").notNull().default("eletronica"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
@@ -186,6 +189,27 @@ export const products = pgTable(
   reorderLevel: integer("reorderLevel").notNull().default(5),
   // Origin of the record: "manual" | "batch" | "ai"
   importSource: text("importSource").notNull().default("manual"),
+  // Segmento do produto (ex: "eletronica", "joalheria"). Define quais campos estão preenchidos.
+  segment: text("segment").notNull().default("eletronica"),
+  // --- Campos específicos para joalheria ---
+  // Categoria de joalheria (ex: "Peixe", "Gema", "Anel", "Colar", etc.)
+  jewelryCategory: text("jewelryCategory"),
+  // Dimensões em centímetros
+  heightCm: numeric("heightCm", { precision: 6, scale: 2 }),
+  lengthCm: numeric("lengthCm", { precision: 6, scale: 2 }),
+  widthCm: numeric("widthCm", { precision: 6, scale: 2 }),
+  // Material principal (ex: "Prata natural", "Ouro 18k", "Cristal", etc.)
+  mainMaterial: text("mainMaterial"),
+  // Material da base/suporte (ex: "Vidro", "Madeira", "Acrílico", etc.)
+  baseMaterial: text("baseMaterial"),
+  // Estado de conservação (ex: "Excelente", "Bom", "Aceitável", "Restauração necessária")
+  conservationState: text("conservationState"),
+  // Nível de confiança na identificação do material (ex: "Alto", "Médio", "Baixo")
+  identificationConfidence: text("identificationConfidence"),
+  // Preço especial de varejo (quando diferente do calculado)
+  retailPriceUsd: numeric("retailPriceUsd", { precision: 12, scale: 2 }),
+  // Código de identificação/catalogação
+  catalogCode: text("catalogCode"),
   createdBy: text("createdBy").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),

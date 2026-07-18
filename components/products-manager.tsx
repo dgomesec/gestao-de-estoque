@@ -190,7 +190,7 @@ export function ProductsManager({
   }, [form, rate, protectionPct])
 
   function submit() {
-    if (!form.sku.trim() || !form.name.trim()) {
+    if ((!form.sku || !form.sku.trim()) || !form.name.trim()) {
       toast.error("SKU e nome são obrigatórios")
       return
     }

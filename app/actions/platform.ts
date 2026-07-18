@@ -32,6 +32,7 @@ export type TenantRow = {
   name: string
   brandName: string | null
   status: string
+  segment: string
   userCount: number
   features: Record<string, boolean>
   createdAt: Date
@@ -62,6 +63,7 @@ export async function getTenants(): Promise<TenantRow[]> {
     name: t.name,
     brandName: t.brandName,
     status: t.status,
+    segment: t.segment,
     userCount: countByTenant.get(t.id) ?? 0,
     features: parseFeatures(t.features),
     createdAt: t.createdAt,
@@ -82,6 +84,7 @@ export async function createTenant(input: {
   slug: string
   name: string
   brandName?: string
+  segment?: string
   adminName?: string
   adminEmail?: string
   adminPassword?: string
@@ -100,11 +103,13 @@ export async function createTenant(input: {
   if (existing[0]) throw new Error('Já existe um cliente com este slug')
 
   const id = crypto.randomUUID()
+  const segment = input.segment?.trim() || 'eletronica'
   await db.insert(tenants).values({
     id,
     slug,
     name,
     brandName: input.brandName?.trim() || null,
+    segment,
     status: 'active',
   })
 
@@ -206,6 +211,31 @@ export async function updateTenantFeatures(id: string, features: Record<string, 
     userEmail: ctx.user.email,
     summary: 'Funcionalidades do cliente atualizadas pela plataforma',
     metadata: map,
+  })
+
+  revalidatePath('/admin')
+  revalidatePath(`/admin/${id}`)
+  return { ok: true }
+}
+
+/** Atualiza o segmento (categoria de negócio) de um cliente (ex: eletronica, joalheria). */
+export async function updateTenantSegment(id: string, segment: string) {
+  const ctx = await requirePlatformAdmin()
+  const validSegments = ['eletronica', 'joalheria']
+  if (!validSegments.includes(segment)) {
+    throw new Error('Segmento inválido')
+  }
+
+  await db.update(tenants).set({ segment, updatedAt: new Date() }).where(eq(tenants.id, id))
+
+  await logAudit({
+    action: 'update',
+    resource: 'settings',
+    tenantId: id,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Segmento do cliente atualizado para "${segment}" pela plataforma`,
   })
 
   revalidatePath('/admin')

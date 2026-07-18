@@ -7,6 +7,7 @@ import { logAudit } from '@/lib/audit'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { detectColors, colorFromLabel, normalizeHex, nearestNamedColor } from '@/lib/colors'
+import { getActiveTenant } from '@/lib/tenant'
 
 /**
  * Resolve o par (rótulo, hex) a ser persistido para a cor de um produto.
@@ -41,19 +42,54 @@ function resolveColorFields(
   }
 }
 
+/**
+ * Extrai os campos de joalheria do input e retorna um objeto com eles.
+ * Converte para tipos corretos (números, etc.).
+ */
+function extractJewelryFields(input: ProductInput) {
+  return {
+    jewelryCategory: input.jewelryCategory?.trim() || null,
+    heightCm: input.heightCm ? String(input.heightCm) : null,
+    lengthCm: input.lengthCm ? String(input.lengthCm) : null,
+    widthCm: input.widthCm ? String(input.widthCm) : null,
+    mainMaterial: input.mainMaterial?.trim() || null,
+    baseMaterial: input.baseMaterial?.trim() || null,
+    conservationState: input.conservationState?.trim() || null,
+    identificationConfidence: input.identificationConfidence?.trim() || null,
+    retailPriceUsd: input.retailPriceUsd ? String(input.retailPriceUsd) : null,
+    catalogCode: input.catalogCode?.trim() || null,
+  }
+}
+
 export type ImportSource = 'manual' | 'batch' | 'ai'
 
 export type ProductInput = {
-  sku: string
+  // Campos comuns
   name: string
   description?: string
-  color?: string | null
-  colorHex?: string | null
   quantity: number
   priceUsd: number
   marginMin: number
   marginMax: number
   reorderLevel: number
+  segment?: string
+
+  // Campos de eletrônica
+  sku?: string
+  color?: string | null
+  colorHex?: string | null
+
+  // Campos de joalheria
+  catalogCode?: string
+  jewelryCategory?: string
+  mainMaterial?: string
+  baseMaterial?: string
+  heightCm?: number | null
+  lengthCm?: number | null
+  widthCm?: number | null
+  conservationState?: string
+  identificationConfidence?: string
+  retailPriceUsd?: number | null
 }
 
 export async function getProducts() {
@@ -169,11 +205,19 @@ export async function createProduct(
     return { product: updated, merged: true, mergedWith: { id: duplicate.id, name: duplicate.name } }
   }
 
+  const tenant = await getActiveTenant()
+  const productSegment = input.segment || tenant?.segment || 'eletronica'
+
+  // SKU é obrigatório em eletrônica; em joalheria pode ser gerado ou vir do catalogCode
+  const sku = input.sku?.trim() || 
+    (productSegment === 'joalheria' ? input.catalogCode?.trim() || `JOI-${Date.now()}` : '')
+
   const [created] = await db
     .insert(products)
     .values({
       tenantId: ctx.tenantId,
-      sku: input.sku.trim(),
+      segment: productSegment,
+      sku: sku,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       ...resolveColorFields(input.name, input.color, input.colorHex),
@@ -182,6 +226,7 @@ export async function createProduct(
       marginMin: String(input.marginMin),
       marginMax: String(input.marginMax),
       reorderLevel: input.reorderLevel,
+      ...(productSegment === 'joalheria' ? extractJewelryFields(input) : {}),
       importSource: source,
       createdBy: ctx.user.id,
     })
@@ -223,10 +268,17 @@ export async function updateProduct(id: number, input: ProductInput) {
     throw new Error('A margem mínima não pode ser maior que a máxima')
   }
 
+  const tenant = await getActiveTenant()
+  const productSegment = input.segment || tenant?.segment || 'eletronica'
+
+  const sku = input.sku?.trim() || 
+    (productSegment === 'joalheria' ? input.catalogCode?.trim() || `JOI-${Date.now()}` : '')
+
   await db
     .update(products)
     .set({
-      sku: input.sku.trim(),
+      segment: productSegment,
+      sku: sku,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       ...resolveColorFields(input.name, input.color, input.colorHex),
@@ -234,6 +286,7 @@ export async function updateProduct(id: number, input: ProductInput) {
       marginMin: String(input.marginMin),
       marginMax: String(input.marginMax),
       reorderLevel: input.reorderLevel,
+      ...(productSegment === 'joalheria' ? extractJewelryFields(input) : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(products.id, id), eq(products.tenantId, ctx.tenantId)))
@@ -246,7 +299,7 @@ export async function updateProduct(id: number, input: ProductInput) {
     userName: ctx.user.name,
     userEmail: ctx.user.email,
     resourceId: id,
-    summary: `Produto "${input.name.trim()}" (${input.sku.trim()}) editado`,
+    summary: `Produto "${input.name.trim()}" (${sku}) editado`,
     metadata: { priceUsd: input.priceUsd, marginMin: input.marginMin, marginMax: input.marginMax },
   })
 
