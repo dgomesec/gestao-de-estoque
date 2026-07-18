@@ -422,6 +422,7 @@ export function ProductImport() {
                         <TableHead className="w-28 text-right">Custo USD</TableHead>
                         <TableHead className="w-24 text-right">Mrg. mín %</TableHead>
                         <TableHead className="w-24 text-right">Mrg. máx %</TableHead>
+                        {source === "ai" && <TableHead className="min-w-56">Descrição</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -481,6 +482,17 @@ export function ProductImport() {
                               className="h-8 text-right"
                             />
                           </TableCell>
+                          {source === "ai" && (
+                            <TableCell>
+                              <Textarea
+                                value={r.description ?? ""}
+                                onChange={(e) => updateRow(i, { description: e.target.value })}
+                                placeholder="Detalhes adicionais (um por linha)"
+                                rows={3}
+                                className="min-h-16 text-xs"
+                              />
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
