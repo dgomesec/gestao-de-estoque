@@ -20,11 +20,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { Download, TrendingUp, ShoppingCart, Boxes, Target, Trash2 } from "lucide-react"
+import {
+  Download,
+  TrendingUp,
+  ShoppingCart,
+  Boxes,
+  Target,
+  Trash2,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  FileSpreadsheet,
+} from "lucide-react"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
 import { getSalesReport, getSalesReportByRange, type SalesReport } from "@/app/actions/reports"
 import { deleteGoal, type GoalProgress } from "@/app/actions/goals"
 import { formatMoney, formatUSD, formatDateTime, formatPct, type DisplayCurrency } from "@/lib/format"
+
+const STOCK_PAGE_SIZE = 8
 
 const PERIODS = [
   { value: "7", label: "Últimos 7 dias" },
@@ -72,6 +94,22 @@ export function ReportsView({
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [isPending, startTransition] = useTransition()
+
+  // Busca e paginação da tabela de estoque (evita rolagem infinita).
+  const [stockSearch, setStockSearch] = useState("")
+  const [stockPage, setStockPage] = useState(1)
+
+  const filteredStock = stockRows.filter((r) => {
+    const q = stockSearch.trim().toLowerCase()
+    if (!q) return true
+    return r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q)
+  })
+  const stockPageCount = Math.max(1, Math.ceil(filteredStock.length / STOCK_PAGE_SIZE))
+  const currentStockPage = Math.min(stockPage, stockPageCount)
+  const pagedStock = filteredStock.slice(
+    (currentStockPage - 1) * STOCK_PAGE_SIZE,
+    currentStockPage * STOCK_PAGE_SIZE,
+  )
 
   function handleDeleteGoal(month: string, label: string) {
     if (!confirm(`Excluir a meta de ${label}?`)) return
@@ -152,7 +190,7 @@ export function ReportsView({
   function exportStock() {
     downloadCsv(
       "relatorio-estoque.csv",
-      ["Produto", "SKU", "Quantidade", "Nivel reposicao", "Custo USD", "Custo BRL", "Valor em estoque BRL"],
+      ["Produto", "SKU", "Quantidade", "Nivel reposicao", "Custo USD", `Custo ${currency}`, `Valor em estoque ${currency}`],
       stockRows.map((r) => [
         r.name,
         r.sku,
@@ -162,6 +200,72 @@ export function ReportsView({
         r.costBrl.toFixed(2),
         r.stockValueBrl.toFixed(2),
       ]),
+    )
+  }
+
+  function exportPdf(
+    title: string,
+    subtitle: string,
+    filename: string,
+    headers: string[],
+    rows: (string | number)[][],
+    numericCols: number[],
+  ) {
+    const doc = new jsPDF({ orientation: "landscape" })
+    doc.setFontSize(14)
+    doc.text(title, 14, 16)
+    doc.setFontSize(9)
+    doc.setTextColor(120)
+    doc.text(subtitle, 14, 22)
+    autoTable(doc, {
+      startY: 27,
+      head: [headers],
+      body: rows.map((r) => r.map((c) => String(c))),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255 },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      columnStyles: Object.fromEntries(numericCols.map((c) => [c, { halign: "right" }])),
+    })
+    doc.save(filename)
+    toast.success("Relatório exportado em PDF")
+  }
+
+  function exportSalesPdf() {
+    const periodLabel = PERIODS.find((p) => p.value === days)?.label ?? "Período personalizado"
+    exportPdf(
+      "Relatório de vendas",
+      `${periodLabel} · gerado em ${formatDateTime(new Date())}`,
+      `relatorio-vendas-${days}d.pdf`,
+      ["Data", "Produto", "SKU", "Qtd.", `Total ${currency}`, `Lucro ${currency}`, "Cliente"],
+      report.rows.map((r) => [
+        formatDateTime(r.createdAt),
+        r.productName,
+        r.sku,
+        r.quantity,
+        fmt(r.totalBrl),
+        fmt(r.profitBrl),
+        r.customer ?? "—",
+      ]),
+      [3, 4, 5],
+    )
+  }
+
+  function exportStockPdf() {
+    exportPdf(
+      "Relatório de estoque",
+      `Valor total em estoque ${fmt(stockTotalBrl)} · gerado em ${formatDateTime(new Date())}`,
+      "relatorio-estoque.pdf",
+      ["Produto", "SKU", "Qtd.", "Repor em", "Custo USD", `Custo ${currency}`, `Valor em estoque ${currency}`],
+      stockRows.map((r) => [
+        r.name,
+        r.sku,
+        r.quantity,
+        r.reorderLevel,
+        formatUSD(r.costUsd),
+        fmt(r.costBrl),
+        fmt(r.stockValueBrl),
+      ]),
+      [2, 3, 4, 5, 6],
     )
   }
 
@@ -286,10 +390,26 @@ export function ReportsView({
                 </Button>
               </div>
             )}
-            <Button variant="outline" onClick={exportSales} className="gap-2" disabled={report.rows.length === 0}>
-              <Download className="size-4" aria-hidden="true" />
-              CSV
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" className="gap-2" disabled={report.rows.length === 0}>
+                    <Download className="size-4" aria-hidden="true" />
+                    Exportar
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={exportSalesPdf}>
+                  <FileText className="size-4" aria-hidden="true" />
+                  Exportar PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportSales}>
+                  <FileSpreadsheet className="size-4" aria-hidden="true" />
+                  Exportar CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -355,17 +475,51 @@ export function ReportsView({
 
       {/* Relatório de estoque */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold">
             Estoque{" "}
             <span className="text-sm font-normal text-muted-foreground">
               · valor total {fmt(stockTotalBrl)}
             </span>
           </h2>
-          <Button variant="outline" onClick={exportStock} className="gap-2" disabled={stockRows.length === 0}>
-            <Download className="size-4" aria-hidden="true" />
-            CSV
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={stockSearch}
+                onChange={(e) => {
+                  setStockSearch(e.target.value)
+                  setStockPage(1)
+                }}
+                placeholder="Buscar produto ou SKU"
+                className="w-56 pl-9"
+                aria-label="Buscar no estoque"
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" className="gap-2" disabled={stockRows.length === 0}>
+                    <Download className="size-4" aria-hidden="true" />
+                    Exportar
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={exportStockPdf}>
+                  <FileText className="size-4" aria-hidden="true" />
+                  Exportar PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportStock}>
+                  <FileSpreadsheet className="size-4" aria-hidden="true" />
+                  Exportar CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         <Card>
@@ -382,14 +536,14 @@ export function ReportsView({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {stockRows.length === 0 ? (
+                  {filteredStock.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                        Nenhum produto cadastrado.
+                        {stockSearch ? "Nenhum produto encontrado." : "Nenhum produto cadastrado."}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    stockRows.map((r) => {
+                    pagedStock.map((r) => {
                       const low = r.quantity <= r.reorderLevel
                       return (
                         <TableRow key={r.sku}>
@@ -416,6 +570,42 @@ export function ReportsView({
             </div>
           </CardContent>
         </Card>
+
+        {filteredStock.length > 0 && (
+          <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
+            <p className="text-sm text-muted-foreground">
+              Mostrando {(currentStockPage - 1) * STOCK_PAGE_SIZE + 1}
+              {"–"}
+              {Math.min(currentStockPage * STOCK_PAGE_SIZE, filteredStock.length)} de{" "}
+              {filteredStock.length} produto{filteredStock.length === 1 ? "" : "s"}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => setStockPage((p) => Math.max(1, p - 1))}
+                disabled={currentStockPage <= 1}
+              >
+                <ChevronLeft className="size-4" aria-hidden="true" />
+                Anterior
+              </Button>
+              <span className="text-sm tabular-nums text-muted-foreground">
+                {currentStockPage} / {stockPageCount}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => setStockPage((p) => Math.min(stockPageCount, p + 1))}
+                disabled={currentStockPage >= stockPageCount}
+              >
+                Próxima
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )

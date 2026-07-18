@@ -16,6 +16,10 @@ export default async function DashboardLayout({
   // Super-usuário de plataforma sem cliente selecionado vai para o painel master.
   if (ctx.isPlatformAdmin && !ctx.tenant) redirect('/admin')
 
+  // 2FA obrigatório: o admin exigiu, mas o usuário ainda não configurou o app
+  // autenticador. Bloqueia o acesso até concluir a inscrição.
+  if (ctx.twoFactorRequired && !ctx.twoFactorEnabled) redirect('/configurar-2fa')
+
   // Usuário comum sem cliente vinculado não tem onde operar.
   if (!ctx.tenant) {
     return (

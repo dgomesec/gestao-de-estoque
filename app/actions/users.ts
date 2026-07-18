@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, userRoles, appRoles } from "@/lib/db/schema"
+import { user, userRoles, appRoles, twoFactor } from "@/lib/db/schema"
 import { requirePermission, requireUser } from "@/lib/rbac"
 import { logAudit } from "@/lib/audit"
 import { and, desc, eq, inArray } from "drizzle-orm"
@@ -15,6 +15,8 @@ export type UserRow = {
   createdAt: Date
   roleIds: number[]
   roleNames: string[]
+  twoFactorEnabled: boolean
+  twoFactorRequired: boolean
 }
 
 export async function getUsers(): Promise<UserRow[]> {
@@ -39,6 +41,8 @@ export async function getUsers(): Promise<UserRow[]> {
       createdAt: u.createdAt,
       roleIds: myLinks.map((l) => l.roleId),
       roleNames: myLinks.map((l) => roleById.get(l.roleId) ?? "—"),
+      twoFactorEnabled: u.twoFactorEnabled,
+      twoFactorRequired: u.twoFactorRequired,
     }
   })
 }
@@ -135,6 +139,69 @@ async function assignRolesInternal(tenantId: string, userId: string, roleIds: nu
   if (roleIds.length) {
     await db.insert(userRoles).values(roleIds.map((roleId) => ({ tenantId, userId, roleId })))
   }
+}
+
+/**
+ * Admin define se o 2FA é OBRIGATÓRIO para um usuário. Quando obrigatório e o
+ * usuário ainda não configurou, o layout do dashboard bloqueia o acesso até a
+ * inscrição do app autenticador.
+ */
+export async function setUserTwoFactorRequired(userId: string, required: boolean) {
+  const ctx = await requirePermission("users", "update")
+
+  const [target] = await db
+    .select()
+    .from(user)
+    .where(and(eq(user.id, userId), eq(user.tenantId, ctx.tenantId)))
+  if (!target) throw new Error("Usuário não encontrado")
+
+  await db.update(user).set({ twoFactorRequired: required }).where(eq(user.id, userId))
+
+  await logAudit({
+    action: "update",
+    resource: "users",
+    tenantId: ctx.tenantId,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    resourceId: userId,
+    summary: `2FA ${required ? "exigido" : "dispensado"} para "${target.name}"`,
+  })
+
+  revalidatePath("/usuarios")
+  return { ok: true }
+}
+
+/**
+ * Admin redefine (desativa) o 2FA de um usuário — útil quando a pessoa perde o
+ * acesso ao aplicativo autenticador. Remove o segredo/códigos e zera o status;
+ * se o 2FA continuar obrigatório, o usuário terá que reconfigurar no próximo acesso.
+ */
+export async function resetUserTwoFactor(userId: string) {
+  const ctx = await requirePermission("users", "update")
+
+  const [target] = await db
+    .select()
+    .from(user)
+    .where(and(eq(user.id, userId), eq(user.tenantId, ctx.tenantId)))
+  if (!target) throw new Error("Usuário não encontrado")
+
+  await db.delete(twoFactor).where(eq(twoFactor.userId, userId))
+  await db.update(user).set({ twoFactorEnabled: false }).where(eq(user.id, userId))
+
+  await logAudit({
+    action: "update",
+    resource: "users",
+    tenantId: ctx.tenantId,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    resourceId: userId,
+    summary: `2FA redefinido (desativado) para "${target.name}"`,
+  })
+
+  revalidatePath("/usuarios")
+  return { ok: true }
 }
 
 export async function deleteUser(userId: string) {
