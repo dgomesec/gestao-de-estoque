@@ -1,15 +1,17 @@
-import { formatBRL, formatDateTime, formatSaleCode } from "@/lib/format"
+import { formatMoney, formatDateTime, formatSaleCode } from "@/lib/format"
 import type { Order } from "@/lib/orders"
 
 /**
  * Recibo simples e imprimível de um pedido (venda ou orçamento). Apresentacional:
  * recebe um `Order` já montado. Usado na página pública de recibo e como base
- * visual do orçamento enviado por e-mail. Todos os valores são exibidos em reais.
+ * visual do orçamento enviado por e-mail. Os valores são exibidos na moeda
+ * registrada na venda (real, dólar ou euro).
  */
 export function ReceiptView({ order }: { order: Order }) {
   const isQuote = order.kind === "quote"
   const code = formatSaleCode(order.kind, order.id)
   const { store } = order
+  const fmt = (v: number) => formatMoney(v, order.currency)
 
   return (
     <div className="mx-auto max-w-2xl bg-card text-card-foreground">
@@ -64,8 +66,8 @@ export function ReceiptView({ order }: { order: Order }) {
             <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 font-medium">Produto</th>
               <th className="pb-2 text-center font-medium">Qtd</th>
-              <th className="pb-2 text-right font-medium">Unitário (R$)</th>
-              <th className="pb-2 text-right font-medium">Total (R$)</th>
+              <th className="pb-2 text-right font-medium">Unitário ({order.currency})</th>
+              <th className="pb-2 text-right font-medium">Total ({order.currency})</th>
             </tr>
           </thead>
           <tbody>
@@ -78,8 +80,8 @@ export function ReceiptView({ order }: { order: Order }) {
                     {item.sku && <span className="block text-xs text-muted-foreground">{item.sku}</span>}
                   </td>
                   <td className="py-2 text-center">{item.quantity}</td>
-                  <td className="py-2 text-right text-muted-foreground">{formatBRL(unitBrl)}</td>
-                  <td className="py-2 text-right font-medium">{formatBRL(Number(item.totalBrl))}</td>
+                  <td className="py-2 text-right text-muted-foreground">{fmt(unitBrl)}</td>
+                  <td className="py-2 text-right font-medium">{fmt(Number(item.totalBrl))}</td>
                 </tr>
               )
             })}
@@ -92,7 +94,7 @@ export function ReceiptView({ order }: { order: Order }) {
               <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Total a pagar
               </span>
-              <span className="text-2xl font-bold text-primary">{formatBRL(order.totalBrl)}</span>
+              <span className="text-2xl font-bold text-primary">{fmt(order.totalBrl)}</span>
             </div>
           </div>
         </div>

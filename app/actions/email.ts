@@ -3,7 +3,7 @@
 import { Resend } from 'resend'
 import { requirePermission } from '@/lib/rbac'
 import { getOrderByGroupId, getBaseUrl, type Order } from '@/lib/orders'
-import { formatBRL, formatDateTime, formatSaleCode } from '@/lib/format'
+import { formatMoney, formatDateTime, formatSaleCode } from '@/lib/format'
 import { logAudit } from '@/lib/audit'
 
 // Remetente: usa um domínio verificado no Resend se configurado, senão o
@@ -71,6 +71,7 @@ function buildHtml(
   opts: { isQuote: boolean; approvalUrl: string | null; receiptUrl: string },
 ): string {
   const { isQuote, approvalUrl, receiptUrl } = opts
+  const fmt = (v: number) => formatMoney(v, order.currency)
   const rows = order.items
     .map((it) => {
       const unitBrl = it.quantity > 0 ? Number(it.totalBrl) / it.quantity : Number(it.totalBrl)
@@ -81,8 +82,8 @@ function buildHtml(
           ${it.sku ? `<br/><span style="color:#888;font-size:12px;">${escapeHtml(it.sku)}</span>` : ''}
         </td>
         <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;color:#666;">${formatBRL(unitBrl)}</td>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;"><strong>${formatBRL(Number(it.totalBrl))}</strong></td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;color:#666;">${fmt(unitBrl)}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;"><strong>${fmt(Number(it.totalBrl))}</strong></td>
       </tr>`
     })
     .join('')
@@ -131,8 +132,8 @@ function buildHtml(
         <tr style="text-align:left;color:#888;">
           <th style="padding:8px 0;border-bottom:1px solid #ddd;">Produto</th>
           <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:center;">Qtd</th>
-          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Unitário (R$)</th>
-          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Total (R$)</th>
+          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Unitário (${order.currency})</th>
+          <th style="padding:8px 0;border-bottom:1px solid #ddd;text-align:right;">Total (${order.currency})</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -140,7 +141,7 @@ function buildHtml(
 
     <div style="text-align:right;margin-top:16px;">
       <span style="color:#666;font-size:13px;">Total a pagar</span><br/>
-      <span style="font-size:26px;font-weight:700;color:#16a34a;">${formatBRL(order.totalBrl)}</span>
+      <span style="font-size:26px;font-weight:700;color:#16a34a;">${fmt(order.totalBrl)}</span>
     </div>
 
     ${approveBlock}

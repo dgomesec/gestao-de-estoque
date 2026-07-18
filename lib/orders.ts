@@ -2,6 +2,7 @@ import { db } from "@/lib/db"
 import { sales, products, customers } from "@/lib/db/schema"
 import { eq, asc } from "drizzle-orm"
 import { getSettings } from "@/lib/exchange"
+import { toDisplayCurrency, type DisplayCurrency } from "@/lib/format"
 
 /**
  * Representa um "pedido" completo: todas as linhas de `sales` que compartilham o
@@ -28,6 +29,8 @@ export type Order = {
   approvedAt: Date | null
   approvalToken: string | null
   exchangeRate: string
+  // Moeda de venda/exibição registrada no momento da venda.
+  currency: DisplayCurrency
   customer: {
     id: number | null
     name: string | null
@@ -86,6 +89,7 @@ function mapRows(
     approvedAt: first.approvedAt,
     approvalToken: first.approvalToken,
     exchangeRate: first.exchangeRate,
+    currency: toDisplayCurrency(first.currency),
     customer: {
       id: first.customerId,
       name: rows[0].customerName ?? first.customer ?? null,

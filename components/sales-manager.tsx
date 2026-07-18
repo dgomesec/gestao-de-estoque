@@ -47,7 +47,7 @@ import { registerSaleItems, convertOrder, deleteOrder, deleteOrders, updateOrder
 import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
 import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
-import { formatBRL, formatUSD, formatDateTime, formatPct, formatSaleCode } from "@/lib/format"
+import { formatMoney, formatUSD, formatDateTime, formatPct, formatSaleCode, type DisplayCurrency } from "@/lib/format"
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Sale = {
@@ -148,6 +148,7 @@ export function SalesManager({
   products,
   customers,
   rate,
+  currency = "BRL",
   protectionPct,
   perms,
 }: {
@@ -155,9 +156,12 @@ export function SalesManager({
   products: ProductOpt[]
   customers: CustomerOpt[]
   rate: number
+  currency?: DisplayCurrency
   protectionPct: number
   perms: Perms
 }) {
+  // Moeda de venda atual do tenant (para novas vendas e prévias no carrinho).
+  const fmt = (v: number) => formatMoney(v, currency)
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<SaleKind>("sale")
   const [cart, setCart] = useState<CartItem[]>([])
