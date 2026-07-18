@@ -7,6 +7,7 @@ import {
   updateTenantBranding,
   updateTenantFeatures,
   setTenantStatus,
+  updateTenantSegment,
   createTenantAdmin,
   deleteTenant,
 } from '@/app/actions/platform'
@@ -17,6 +18,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Card,
   CardContent,
@@ -52,6 +60,7 @@ type TenantData = {
   slug: string
   name: string
   status: string
+  segment: string
   brandName: string | null
   logoUrl: string | null
   colorPrimary: string | null
@@ -113,6 +122,7 @@ export function TenantEditor({
       </div>
 
       <BrandingCard tenant={tenant} onDone={() => router.refresh()} />
+      <SegmentCard tenant={tenant} onDone={() => router.refresh()} />
       <FeaturesCard tenantId={tenant.id} features={features} onDone={() => router.refresh()} />
 
       <Card>
@@ -416,6 +426,46 @@ function DangerZone({ tenant }: { tenant: TenantData }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SegmentCard({ tenant, onDone }: { tenant: TenantData; onDone: () => void }) {
+  const [isPending, startTransition] = useTransition()
+  const [segment, setSegment] = useState(tenant.segment)
+
+  function handleSave() {
+    startTransition(async () => {
+      try {
+        await updateTenantSegment(tenant.id, segment)
+        toast.success('Segmento atualizado')
+        onDone()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Erro ao atualizar segmento')
+      }
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Segmento de negócio</CardTitle>
+        <CardDescription>Tipo de produtos que este cliente cadastra.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 sm:max-w-sm">
+        <Select value={segment} onValueChange={(v) => setSegment(v || 'eletronica')} disabled={isPending}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="eletronica">Eletrônica</SelectItem>
+            <SelectItem value="joalheria">Joalheria</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button onClick={handleSave} disabled={isPending || segment === tenant.segment}>
+          {isPending ? 'Salvando...' : 'Salvar segmento'}
+        </Button>
       </CardContent>
     </Card>
   )

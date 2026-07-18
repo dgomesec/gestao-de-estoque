@@ -41,6 +41,7 @@ export default async function TenantDetailPage({
           slug: tenant.slug,
           name: tenant.name,
           status: tenant.status,
+          segment: tenant.segment,
           brandName: tenant.brandName,
           logoUrl: tenant.logoUrl,
           colorPrimary: tenant.colorPrimary,

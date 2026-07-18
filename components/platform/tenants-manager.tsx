@@ -293,6 +293,7 @@ function CreateTenantDialog({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState({
     name: '',
     slug: '',
+    segment: 'eletronica',
     brandName: '',
     adminName: '',
     adminEmail: '',
@@ -325,13 +326,14 @@ function CreateTenantDialog({ onDone }: { onDone: () => void }) {
         await createTenant({
           name: form.name,
           slug: form.slug,
+          segment: form.segment,
           brandName: form.brandName || undefined,
           adminName: form.adminName || undefined,
           adminEmail: form.adminEmail || undefined,
           adminPassword: form.adminPassword || undefined,
         })
         toast.success('Cliente criado com sucesso')
-        setForm({ name: '', slug: '', brandName: '', adminName: '', adminEmail: '', adminPassword: '' })
+        setForm({ name: '', slug: '', segment: 'eletronica', brandName: '', adminName: '', adminEmail: '', adminPassword: '' })
         setOpen(false)
         onDone()
       } catch (e) {
@@ -366,6 +368,19 @@ function CreateTenantDialog({ onDone }: { onDone: () => void }) {
           <div className="grid gap-2">
             <Label htmlFor="t-brand">Nome de marca (opcional)</Label>
             <Input id="t-brand" value={form.brandName} onChange={(e) => set('brandName', e.target.value)} placeholder="Padrão: nome do cliente" />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="t-segment">Segmento de negócio</Label>
+            <Select value={form.segment} onValueChange={(v) => set('segment', v || 'eletronica')}>
+              <SelectTrigger id="t-segment">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="eletronica">Eletrônica</SelectItem>
+                <SelectItem value="joalheria">Joalheria</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Define qual tipo de produtos este cliente cadastra.</p>
           </div>
           <div className="rounded-lg border border-border p-3">
             <p className="mb-3 text-sm font-medium text-foreground">Administrador inicial (opcional)</p>
