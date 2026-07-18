@@ -10,9 +10,18 @@ const extractedSchema = z.object({
     z.object({
       sku: z.string().nullable().describe('Código/SKU do produto, se houver. Caso não exista, gere um a partir do nome.'),
       name: z.string().describe('Nome/descrição do produto'),
-      description: z.string().nullable().describe('Detalhes adicionais do produto'),
+      description: z.string().nullable().describe('Detalhes adicionais do produto em texto livre, se houver.'),
       quantity: z.number().nullable().describe('Quantidade comprada'),
       priceUsd: z.number().nullable().describe('Preço unitário de custo em dólar (USD). Se o valor estiver em real, converta aproximando ou deixe nulo.'),
+      extraAttributes: z
+        .array(
+          z.object({
+            label: z.string().describe('Nome do atributo/campo (ex: "Altura", "Material principal", "Estado de conservação", "Garantia", "Lote", "Categoria").'),
+            value: z.string().describe('Valor do atributo exatamente como aparece no documento.'),
+          }),
+        )
+        .nullable()
+        .describe('TODA informação adicional do produto que NÃO caiba nos campos estruturados (sku, name, quantity, priceUsd). Ex: dimensões (altura/comprimento/largura), materiais, estado de conservação, confiança da identificação, categoria, garantia, número de lote, observações, preços sugeridos, etc. Cada dado vira um item {label, value}. Não repita aqui o que já foi colocado em sku, name, quantity ou priceUsd.'),
     }),
   ),
   currencyDetected: z.string().nullable().describe('Moeda detectada no documento (ex: USD, BRL)'),
@@ -46,6 +55,8 @@ Regras:
 - Os preços devem ser o CUSTO unitário em dólar (USD). Se o documento estiver em reais (BRL) ou outra moeda, retorne o valor mesmo assim e indique a moeda em currencyDetected.
 - Se não houver um SKU/código explícito, gere um SKU curto e legível derivado do nome. Exemplos por segmento: "iPhone 15 128GB" -> "IPH15-128"; "Pastilha de Freio Bosch" -> "PAST-FREIO-BOSCH"; "Peixe Betta Macho Azul" -> "BETTA-MACHO-AZUL"; "Filtro Externo Canister 1200L/h" -> "FILT-CANISTER-1200".
 - Ignore linhas que não sejam produtos (impostos, frete, totais, descontos).
+- IMPORTANTE: NÃO descarte nenhuma informação do produto. Todo dado que não couber nos campos estruturados (sku, name, quantity, priceUsd) deve ser preservado em extraAttributes, um par {label, value} por informação. Exemplos: dimensões (altura, comprimento, largura), material principal, material da base, estado de conservação, confiança da identificação, categoria, cor, garantia, número de lote/série, preços sugeridos (atacado/varejo), observações do documento, etc.
+- Preserve os rótulos originais das colunas/campos do documento em label quando possível.
 - Se um campo não existir, retorne null.`
 
 function slugifySku(name: string): string {
@@ -91,13 +102,39 @@ function toFriendlyError(err: unknown): Error {
   return new Error('Falha ao processar com a IA: ' + (raw || 'erro desconhecido') + '.')
 }
 
+/**
+ * Monta a descrição final combinando o texto livre extraído com todos os
+ * atributos que não couberam nos campos estruturados. Cada atributo vira uma
+ * linha "Rótulo: valor", de modo que nada do documento se perca.
+ */
+function buildDescription(
+  description: string | null | undefined,
+  extraAttributes: { label: string; value: string }[] | null | undefined,
+): string | null {
+  const lines: string[] = []
+
+  const freeText = description?.trim()
+  if (freeText) lines.push(freeText)
+
+  for (const attr of extraAttributes ?? []) {
+    const label = attr?.label?.trim()
+    const value = attr?.value?.trim()
+    if (!value) continue
+    // Evita duplicar uma linha idêntica já presente no texto livre.
+    const line = label ? `${label}: ${value}` : value
+    if (!lines.includes(line)) lines.push(line)
+  }
+
+  return lines.length > 0 ? lines.join('\n') : null
+}
+
 function normalize(result: z.infer<typeof extractedSchema>): AiExtractionResult {
   const products: AiExtractedProduct[] = (result.products ?? [])
     .filter((p) => p.name && p.name.trim())
     .map((p) => ({
       sku: (p.sku && p.sku.trim()) || slugifySku(p.name),
       name: p.name.trim(),
-      description: p.description?.trim() || null,
+      description: buildDescription(p.description, p.extraAttributes),
       quantity: Math.max(0, Math.trunc(Number(p.quantity) || 0)),
       priceUsd: Math.max(0, Number(p.priceUsd) || 0),
     }))
