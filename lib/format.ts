@@ -1,10 +1,48 @@
-export function formatBRL(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
+/** Moedas de exibição/venda suportadas pela plataforma. */
+export type DisplayCurrency = 'BRL' | 'USD' | 'EUR'
+
+const CURRENCY_LOCALE: Record<DisplayCurrency, string> = {
+  BRL: 'pt-BR',
+  USD: 'en-US',
+  EUR: 'de-DE',
+}
+
+const CURRENCY_SYMBOL: Record<DisplayCurrency, string> = {
+  BRL: 'R$',
+  USD: 'US$',
+  EUR: '€',
+}
+
+/** Normaliza um valor arbitrário para uma moeda de exibição válida. */
+export function toDisplayCurrency(value: unknown): DisplayCurrency {
+  return value === 'USD' || value === 'EUR' ? value : 'BRL'
+}
+
+/** Símbolo curto da moeda (ex.: "R$", "US$", "€"). */
+export function currencySymbol(currency: DisplayCurrency): string {
+  return CURRENCY_SYMBOL[currency] ?? 'R$'
+}
+
+/**
+ * Formata um valor monetário na moeda de exibição escolhida pelo tenant
+ * (real, dólar ou euro). É o formatador padrão de toda a interface.
+ */
+export function formatMoney(value: number, currency: DisplayCurrency = 'BRL'): string {
+  const cur = toDisplayCurrency(currency)
+  return new Intl.NumberFormat(CURRENCY_LOCALE[cur], {
     style: 'currency',
-    currency: 'BRL',
+    currency: cur,
   }).format(Number.isFinite(value) ? value : 0)
 }
 
+export function formatBRL(value: number): string {
+  return formatMoney(value, 'BRL')
+}
+
+/**
+ * Formata explicitamente em dólar (USD). Usado para o CUSTO dos produtos, que
+ * é sempre armazenado e informado em dólar, independente da moeda de venda.
+ */
 export function formatUSD(value: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',

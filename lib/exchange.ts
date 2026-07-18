@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { settings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getAuthContext } from '@/lib/rbac'
+import { toDisplayCurrency, type DisplayCurrency } from '@/lib/format'
 
 /**
  * Resolve o tenant efetivo para operações de configuração/câmbio. Aceita um
@@ -24,6 +25,7 @@ export type StoreInfo = {
 }
 
 export type Settings = {
+  displayCurrency: DisplayCurrency
   exchangeRate: number
   manualRate: boolean
   currencyProtectionPct: number
@@ -36,18 +38,18 @@ export type Settings = {
 const RATE_TTL_MS = 6 * 60 * 60 * 1000
 
 /**
- * Busca a cotação USD->BRL na AwesomeAPI (gratuita, sem chave).
- * Retorna null em caso de falha.
+ * Busca a cotação USD->moeda na AwesomeAPI (gratuita, sem chave).
+ * Retorna null em caso de falha. Suporta BRL e EUR.
  */
-export async function fetchUsdBrlRate(): Promise<number | null> {
+export async function fetchUsdRateAwesome(target: 'BRL' | 'EUR'): Promise<number | null> {
   try {
-    const res = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL', {
+    const res = await fetch(`https://economia.awesomeapi.com.br/json/last/USD-${target}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) return null
     const data = await res.json()
-    const bid = Number(data?.USDBRL?.bid)
+    const bid = Number(data?.[`USD${target}`]?.bid)
     return Number.isFinite(bid) && bid > 0 ? bid : null
   } catch {
     return null
@@ -57,7 +59,7 @@ export async function fetchUsdBrlRate(): Promise<number | null> {
 /**
  * Fonte alternativa gratuita caso a AwesomeAPI falhe (ex.: 429).
  */
-export async function fetchUsdBrlRateFallback(): Promise<number | null> {
+export async function fetchUsdRateFallback(target: 'BRL' | 'EUR'): Promise<number | null> {
   try {
     const res = await fetch('https://open.er-api.com/v6/latest/USD', {
       cache: 'no-store',
@@ -65,21 +67,25 @@ export async function fetchUsdBrlRateFallback(): Promise<number | null> {
     })
     if (!res.ok) return null
     const data = await res.json()
-    const brl = Number(data?.rates?.BRL)
-    return Number.isFinite(brl) && brl > 0 ? brl : null
+    const rate = Number(data?.rates?.[target])
+    return Number.isFinite(rate) && rate > 0 ? rate : null
   } catch {
     return null
   }
 }
 
 /**
- * Tenta obter a cotação ao vivo: AwesomeAPI primeiro, com fallback para
- * open.er-api.com. Retorna o valor e a fonte usada, ou null se ambas falharem.
+ * Tenta obter a cotação USD->moeda ao vivo: AwesomeAPI primeiro, com fallback
+ * para open.er-api.com. Retorna o valor e a fonte usada, ou null se falhar.
+ * Para USD a taxa é sempre 1 (sem chamada externa).
  */
-async function fetchLiveRate(): Promise<{ rate: number; source: string } | null> {
-  const primary = await fetchUsdBrlRate()
+async function fetchLiveRate(
+  currency: DisplayCurrency,
+): Promise<{ rate: number; source: string } | null> {
+  if (currency === 'USD') return { rate: 1, source: 'fixed' }
+  const primary = await fetchUsdRateAwesome(currency)
   if (primary) return { rate: primary, source: 'awesomeapi' }
-  const fallback = await fetchUsdBrlRateFallback()
+  const fallback = await fetchUsdRateFallback(currency)
   if (fallback) return { rate: fallback, source: 'er-api' }
   return null
 }
@@ -96,6 +102,7 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
   const row = rows[0]
   if (!row) {
     return {
+      displayCurrency: 'BRL',
       exchangeRate: 5,
       manualRate: false,
       currencyProtectionPct: 0,
@@ -110,6 +117,7 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
     }
   }
   return {
+    displayCurrency: toDisplayCurrency(row.displayCurrency),
     exchangeRate: Number(row.exchangeRate),
     manualRate: row.manualRate,
     currencyProtectionPct: Number(row.currencyProtectionPct),
@@ -137,6 +145,10 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
 export async function getEffectiveRate(force = false, tenantId?: string | null): Promise<Settings> {
   const tid = await resolveTenantId(tenantId)
   const current = await getSettings(tid)
+  // Dólar como moeda de exibição: a taxa é sempre 1, sem consulta externa.
+  if (current.displayCurrency === 'USD') {
+    return { ...current, exchangeRate: 1 }
+  }
   if (current.manualRate) return current
   // Sem tenant resolvido não há linha de settings para atualizar.
   if (!tid) return current
@@ -145,7 +157,7 @@ export async function getEffectiveRate(force = false, tenantId?: string | null):
   const isFresh = Date.now() - lastChecked < RATE_TTL_MS
   if (isFresh && !force) return current
 
-  const live = await fetchLiveRate()
+  const live = await fetchLiveRate(current.displayCurrency)
   const now = new Date()
 
   if (!live) {
