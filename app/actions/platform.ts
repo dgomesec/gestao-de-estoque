@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import {
   tenants,
+  segments,
   user as userTable,
   userRoles,
   appRoles,
@@ -452,4 +453,143 @@ export async function stopImpersonation() {
   const c = await cookies()
   c.delete(TENANT_COOKIE)
   redirect('/admin')
+}
+
+// --- Gerenciamento de Segmentos ---
+
+/** Lista todos os segmentos de negócio disponíveis. */
+export async function getAllSegments() {
+  await requirePlatformAdmin()
+  const rows = await db.select().from(segments).orderBy(segments.label)
+  return rows.map((s) => ({
+    id: s.id,
+    label: s.label,
+    description: s.description,
+    fields: s.fields ? JSON.parse(s.fields) : [],
+    isDefault: s.isDefault,
+    createdAt: s.createdAt,
+  }))
+}
+
+export type SegmentRow = {
+  id: string
+  label: string
+  description: string | null
+  fields: string[]
+  isDefault: boolean
+  createdAt: Date
+}
+
+/** Cria um novo segmento de negócio. */
+export async function createSegment(input: {
+  id: string
+  label: string
+  description?: string
+  fields?: string[]
+}) {
+  const ctx = await requirePlatformAdmin()
+
+  const id = input.id.toLowerCase().trim()
+  if (!id || !input.label.trim()) throw new Error('ID e rótulo são obrigatórios')
+
+  const existing = await db.select().from(segments).where(eq(segments.id, id)).limit(1)
+  if (existing.length > 0) throw new Error('Segmento com este ID já existe')
+
+  await db.insert(segments).values({
+    id,
+    label: input.label.trim(),
+    description: input.description?.trim() || null,
+    fields: JSON.stringify(input.fields || []),
+    isDefault: false,
+  })
+
+  await logAudit({
+    action: 'create',
+    resource: 'settings',
+    tenantId: null,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Segmento "${input.label}" criado pela plataforma`,
+  })
+
+  revalidatePath('/admin')
+  return { ok: true }
+}
+
+/** Atualiza um segmento existente. */
+export async function updateSegment(
+  id: string,
+  input: {
+    label?: string
+    description?: string
+    fields?: string[]
+  },
+) {
+  const ctx = await requirePlatformAdmin()
+
+  const existing = await db.select().from(segments).where(eq(segments.id, id)).limit(1)
+  if (existing.length === 0) throw new Error('Segmento não encontrado')
+
+  const s = existing[0]
+  // Segmentos padrão não podem ser deletados, mas podem ser editados
+  if (s.isDefault && !input.label && !input.description && !input.fields) {
+    throw new Error('Não é possível fazer uma atualização vazia em segmentos padrão')
+  }
+
+  await db
+    .update(segments)
+    .set({
+      label: input.label?.trim() || s.label,
+      description: input.description?.trim() ?? s.description,
+      fields: input.fields ? JSON.stringify(input.fields) : s.fields,
+      updatedAt: new Date(),
+    })
+    .where(eq(segments.id, id))
+
+  await logAudit({
+    action: 'update',
+    resource: 'settings',
+    tenantId: null,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Segmento "${id}" atualizado pela plataforma`,
+  })
+
+  revalidatePath('/admin')
+  return { ok: true }
+}
+
+/** Deleta um segmento (apenas se não for padrão). */
+export async function deleteSegment(id: string) {
+  const ctx = await requirePlatformAdmin()
+
+  const existing = await db.select().from(segments).where(eq(segments.id, id)).limit(1)
+  if (existing.length === 0) throw new Error('Segmento não encontrado')
+
+  if (existing[0].isDefault) {
+    throw new Error('Não é possível deletar segmentos padrão')
+  }
+
+  // Verifica se há tenants usando este segmento
+  const usedByTenants = await db.select().from(tenants).where(eq(tenants.segment, id)).limit(1)
+  if (usedByTenants.length > 0) {
+    throw new Error('Não é possível deletar este segmento pois está em uso por clientes')
+  }
+
+  await db.delete(segments).where(eq(segments.id, id))
+
+  await logAudit({
+    action: 'delete',
+    resource: 'settings',
+    tenantId: null,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Segmento "${id}" deletado pela plataforma`,
+  })
+
+  revalidatePath('/admin')
+  return { ok: true }
 }

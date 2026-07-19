@@ -32,6 +32,25 @@ export const tenants = pgTable("tenants", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
 
+// --- Segmentos de negócio (administração de tipos de produtos) ---
+// Define os tipos de produtos que um tenant pode cadastrar (eletrônica, joalheria, etc.).
+// Gerenciado pelo super-admin de plataforma, compartilhado entre todos os tenants.
+export const segments = pgTable("segments", {
+  // ID único do segmento (ex: "eletronica", "joalheria")
+  id: text("id").primaryKey(),
+  // Rótulo para exibição (ex: "Eletrônica", "Joalheria")
+  label: text("label").notNull(),
+  // Descrição do segmento
+  description: text("description"),
+  // JSON com lista de campos específicos deste segmento (ex: ["sku", "name", "color", ...])
+  // Pode ser usado para renderizar formulários dinâmicos por segmento.
+  fields: text("fields").notNull().default("[]"),
+  // Segmento padrão/predefinido? (não pode ser deletado)
+  isDefault: boolean("isDefault").notNull().default(false),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
 // --- Better Auth required tables -------------------------------------------
 // Column names are camelCase to match Better Auth's defaults. Do not rename.
 

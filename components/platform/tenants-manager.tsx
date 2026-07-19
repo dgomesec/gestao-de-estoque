@@ -9,7 +9,9 @@ import {
   impersonateTenant,
   bulkSetTenantStatus,
   bulkToggleFeature,
+  getAllSegments,
   type TenantRow,
+  type SegmentRow,
 } from '@/app/actions/platform'
 import { TOGGLEABLE_FEATURES } from '@/lib/features'
 import { RESOURCE_LABELS, type ResourceKey } from '@/lib/constants'
@@ -48,7 +50,7 @@ function isRedirectError(e: unknown): boolean {
   )
 }
 
-export function TenantsManager({ tenants }: { tenants: TenantRow[] }) {
+export function TenantsManager({ tenants, segments }: { tenants: TenantRow[]; segments?: SegmentRow[] }) {
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -118,7 +120,7 @@ export function TenantsManager({ tenants }: { tenants: TenantRow[] }) {
             {tenants.length} cliente(s) na plataforma
           </p>
         </div>
-        <CreateTenantDialog onDone={() => router.refresh()} />
+        <CreateTenantDialog segments={segments || []} onDone={() => router.refresh()} />
       </div>
 
       <div className="relative">
@@ -287,13 +289,14 @@ function BulkFeatureControl({
   )
 }
 
-function CreateTenantDialog({ onDone }: { onDone: () => void }) {
+function CreateTenantDialog({ segments, onDone }: { segments: SegmentRow[]; onDone: () => void }) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const defaultSegment = segments.length > 0 ? segments[0].id : 'eletronica'
   const [form, setForm] = useState({
     name: '',
     slug: '',
-    segment: 'eletronica',
+    segment: defaultSegment,
     brandName: '',
     adminName: '',
     adminEmail: '',
@@ -333,7 +336,7 @@ function CreateTenantDialog({ onDone }: { onDone: () => void }) {
           adminPassword: form.adminPassword || undefined,
         })
         toast.success('Cliente criado com sucesso')
-        setForm({ name: '', slug: '', segment: 'eletronica', brandName: '', adminName: '', adminEmail: '', adminPassword: '' })
+        setForm({ name: '', slug: '', segment: defaultSegment, brandName: '', adminName: '', adminEmail: '', adminPassword: '' })
         setOpen(false)
         onDone()
       } catch (e) {
@@ -371,13 +374,16 @@ function CreateTenantDialog({ onDone }: { onDone: () => void }) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="t-segment">Segmento de negócio</Label>
-            <Select value={form.segment} onValueChange={(v) => set('segment', v || 'eletronica')}>
+            <Select value={form.segment} onValueChange={(v) => set('segment', v || defaultSegment)}>
               <SelectTrigger id="t-segment">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="eletronica">Eletrônica</SelectItem>
-                <SelectItem value="joalheria">Joalheria</SelectItem>
+                {segments.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">Define qual tipo de produtos este cliente cadastra.</p>

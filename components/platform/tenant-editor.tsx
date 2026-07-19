@@ -434,6 +434,11 @@ function DangerZone({ tenant }: { tenant: TenantData }) {
 function SegmentCard({ tenant, onDone }: { tenant: TenantData; onDone: () => void }) {
   const [isPending, startTransition] = useTransition()
   const [segment, setSegment] = useState(tenant.segment)
+  // Segmentos padrão — será carregado via component state se necessário
+  const segments = [
+    { id: 'eletronica', label: 'Eletrônica' },
+    { id: 'joalheria', label: 'Joalheria' },
+  ]
 
   function handleSave() {
     startTransition(async () => {
@@ -459,8 +464,11 @@ function SegmentCard({ tenant, onDone }: { tenant: TenantData; onDone: () => voi
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="eletronica">Eletrônica</SelectItem>
-            <SelectItem value="joalheria">Joalheria</SelectItem>
+            {segments.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Button onClick={handleSave} disabled={isPending || segment === tenant.segment}>
