@@ -45,6 +45,7 @@ import { toast } from "sonner"
 import { Plus, MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
 import { createProduct, updateProduct, deleteProduct, deleteProducts, type ProductInput } from "@/app/actions/products"
 import { ProductImport } from "@/components/product-import"
+import { FileUpload } from "@/components/file-upload"
 import { ColorTag } from "@/components/color-tag"
 import { ColorPicker } from "@/components/color-picker"
 import { detectColor, colorFromLabel } from "@/lib/colors"
@@ -112,6 +113,7 @@ export function ProductsManager({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState<ProductInput>(EMPTY)
+  const [detailsFile, setDetailsFile] = useState<File | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -156,6 +158,7 @@ export function ProductsManager({
   function openCreate() {
     setEditing(null)
     setForm(EMPTY)
+    setDetailsFile(null)
     setDialogOpen(true)
   }
 
@@ -173,6 +176,7 @@ export function ProductsManager({
       marginMax: Number(p.marginMax),
       reorderLevel: p.reorderLevel,
     })
+    setDetailsFile(null)
     setDialogOpen(true)
   }
 
@@ -575,6 +579,17 @@ export function ProductsManager({
                 />
               </div>
             </div>
+
+            {/* Upload de arquivo de detalhes (para joalheria/gemas) */}
+            <FileUpload
+              label="Arquivo de detalhes (opcional)"
+              description="PDF, Excel ou imagens com certificado, documentação ou fotos (máx. 10MB)"
+              accept=".pdf,.xlsx,.docx,.jpg,.jpeg,.png"
+              maxSize={10 * 1024 * 1024}
+              onFileSelect={setDetailsFile}
+              currentFile={detailsFile ? { name: detailsFile.name, mimeType: detailsFile.type } : undefined}
+              onRemove={() => setDetailsFile(null)}
+            />
 
             <div className="rounded-lg border bg-muted/40 p-3 text-sm">
               <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">

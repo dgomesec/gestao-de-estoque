@@ -229,6 +229,12 @@ export const products = pgTable(
   retailPriceUsd: numeric("retailPriceUsd", { precision: 12, scale: 2 }),
   // Código de identificação/catalogação
   catalogCode: text("catalogCode"),
+  // URL do arquivo de detalhes adicionais (anexo/documento/certificado/fotos)
+  detailsFileUrl: text("detailsFileUrl"),
+  // Nome do arquivo de detalhes
+  detailsFileName: text("detailsFileName"),
+  // MIME type do arquivo (ex: "application/pdf", "image/jpeg")
+  detailsFileMimeType: text("detailsFileMimeType"),
   createdBy: text("createdBy").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
@@ -333,7 +339,7 @@ export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
   // Tenant dono destas configurações (uma linha por tenant).
   tenantId: text("tenantId").notNull().unique(),
-  // Moeda de venda/exibição do tenant ("BRL" | "USD" | "EUR"). O custo dos
+  // Moeda de venda/exibi��ão do tenant ("BRL" | "USD" | "EUR"). O custo dos
   // produtos permanece em USD; esta é a moeda-alvo da conversão e da interface.
   displayCurrency: text("displayCurrency").notNull().default("BRL"),
   // Taxa de conversão de USD para a moeda de exibição (USD->displayCurrency).
