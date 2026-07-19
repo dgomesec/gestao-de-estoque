@@ -427,9 +427,16 @@ export function ProductsManager({
                   <TableHead>Produto</TableHead>
                   {segment === "joalheria" && (
                     <>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Classe DG</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Espécie</TableHead>
+                      <TableHead>Formato</TableHead>
+                      <TableHead>Peso (ct)</TableHead>
+                      <TableHead>Claridade</TableHead>
+                      <TableHead>Cor</TableHead>
+                      <TableHead>Origem</TableHead>
                       <TableHead>Material</TableHead>
+                      <TableHead>Certificação</TableHead>
+                      <TableHead>Classe DG</TableHead>
                     </>
                   )}
                   <TableHead className="text-right">Qtd.</TableHead>
@@ -442,7 +449,7 @@ export function ProductsManager({
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={(perms.delete ? 6 : 5) + (showCostUsd ? 1 : 0)} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={(perms.delete ? 1 : 0) + 1 + (segment === "joalheria" ? 10 : 0) + 1 + (showCostUsd ? 1 : 0) + 2 + 1} className="h-32 text-center text-muted-foreground">
                       Nenhum produto encontrado.
                     </TableCell>
                   </TableRow>
@@ -480,9 +487,16 @@ export function ProductsManager({
                         </TableCell>
                         {segment === "joalheria" && (
                           <>
-                            <TableCell className="text-sm">{p.catalogCode || "—"}</TableCell>
-                            <TableCell className="text-sm font-medium">{p.classDg || "—"}</TableCell>
-                            <TableCell className="text-sm">{p.mainMaterial || "—"}</TableCell>
+                            <TableCell className="text-xs">{p.itemType || "—"}</TableCell>
+                            <TableCell className="text-xs">{p.gemSpecies || "—"}</TableCell>
+                            <TableCell className="text-xs">{p.cutFormat || "—"}</TableCell>
+                            <TableCell className="text-xs font-medium">{p.weightCt ? `${p.weightCt}ct` : "—"}</TableCell>
+                            <TableCell className="text-xs">{p.clarity || "—"}</TableCell>
+                            <TableCell className="text-xs">{p.colorTone || "—"}</TableCell>
+                            <TableCell className="text-xs">{p.origin || "—"}</TableCell>
+                            <TableCell className="text-xs">{p.mainMaterial || "—"}</TableCell>
+                            <TableCell className="text-xs">{p.hasCertificate ? (p.certificateLab || "Sim") : "Não"}</TableCell>
+                            <TableCell className="text-xs font-medium">{p.classDg || "—"}</TableCell>
                           </>
                         )}
                         <TableCell className="text-right">
