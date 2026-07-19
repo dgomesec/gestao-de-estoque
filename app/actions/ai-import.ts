@@ -181,7 +181,41 @@ export async function extractFromText(text: string): Promise<AiExtractionResult>
 }
 
 /**
- * Extrai produtos a partir de um arquivo (imagem ou PDF) enviado como data URL.
+ * Extrai e processa arquivos XLSX convertendo em texto estruturado.
+ * Retorna o conteúdo como texto para a IA processar.
+ */
+async function processXlsxFile(bytes: Buffer): Promise<string> {
+  try {
+    const { read, utils } = await import('xlsx')
+    const wb = read(bytes, { cellDates: true })
+    const rows: string[] = []
+    
+    for (const sheet of wb.SheetNames) {
+      const data = utils.sheet_to_json(wb.Sheets[sheet])
+      rows.push(`=== SHEET: ${sheet} ===`)
+      
+      if (data.length > 0) {
+        const cols = Object.keys(data[0] || {})
+        rows.push(cols.join('\t'))
+        
+        for (const row of data) {
+          rows.push(cols.map((c) => {
+            const val = (row as Record<string, unknown>)[c]
+            return String(val ?? '')
+          }).join('\t'))
+        }
+      }
+    }
+    
+    return rows.join('\n')
+  } catch (err) {
+    console.log('[v0] processXlsxFile error:', err instanceof Error ? err.message : err)
+    return ''
+  }
+}
+
+/**
+ * Extrai produtos a partir de um arquivo (imagem, PDF ou Office) enviado como data URL.
  */
 export async function extractFromFile(
   dataUrl: string,
@@ -191,10 +225,21 @@ export async function extractFromFile(
   if (!dataUrl) throw new Error('Arquivo vazio')
 
   const isPdf = mediaType === 'application/pdf'
+  const isOffice = mediaType.includes('spreadsheet') || mediaType.includes('document') ||
+    mediaType.includes('xlsx') || mediaType.includes('docx')
+  
   const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1]! : dataUrl
   const bytes = Buffer.from(base64, 'base64')
 
   try {
+    // Se for arquivo XLSX, processar como texto estruturado
+    if (isOffice) {
+      const text = await processXlsxFile(bytes)
+      if (text) {
+        return await extractFromText(text)
+      }
+    }
+
     const { output } = await generateText({
       model: MODEL,
       system: SYSTEM_PROMPT,

@@ -53,6 +53,7 @@ import { formatMoney, formatUSD, formatPct, type DisplayCurrency } from "@/lib/f
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Product = {
+  [key: string]: any
   id: number
   sku: string
   name: string
@@ -60,9 +61,9 @@ type Product = {
   color: string | null
   colorHex: string | null
   quantity: number
-  priceUsd: string
-  marginMin: string
-  marginMax: string
+  priceUsd: string | number
+  marginMin: string | number
+  marginMax: string | number
   reorderLevel: number
   importSource?: string
 }
@@ -88,8 +89,17 @@ const EMPTY: ProductInput = {
   reorderLevel: 5,
 }
 
+// Define quais colunas adicionais exibir por segmento
+function getVisibleColumns(segment: string): string[] {
+  if (segment === "joalheria") {
+    return ["catalogCode", "classDg", "mainMaterial", "weight", "certification"]
+  }
+  return [] // eletronica e outros mostram apenas as colunas padrão
+}
+
 export function ProductsManager({
   products,
+  segment = "eletronica",
   rate,
   currency = "BRL",
   showCostUsd = true,
@@ -97,6 +107,7 @@ export function ProductsManager({
   perms,
 }: {
   products: Product[]
+  segment?: string
   rate: number
   currency?: DisplayCurrency
   showCostUsd?: boolean
@@ -110,6 +121,7 @@ export function ProductsManager({
   const fmtCost = (v: number) => (showCostUsd ? formatUSD(v) : fmt(v))
   const [query, setQuery] = useState("")
   const [colorFilter, setColorFilter] = useState<string>("all")
+  const [classDgFilter, setClassDgFilter] = useState<string>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState<ProductInput>(EMPTY)
@@ -146,13 +158,15 @@ export function ProductsManager({
         !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
       const matchesColor =
         colorFilter === "all" || (p.color ?? "").split(",").map((s) => s.trim()).includes(colorFilter) || effectiveColorLabel(p) === colorFilter
-      return matchesText && matchesColor
+      const matchesClassDg =
+        classDgFilter === "all" || p.classDg === classDgFilter
+      return matchesText && matchesColor && matchesClassDg
     })
-  }, [products, query, colorFilter])
+  }, [products, query, colorFilter, classDgFilter])
 
   const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(
     filtered,
-    `${query}|${colorFilter}`,
+    `${query}|${colorFilter}|${classDgFilter}`,
   )
 
   function openCreate() {
@@ -281,6 +295,15 @@ export function ProductsManager({
   const allSelected = filtered.length > 0 && filtered.every((p) => selected.has(p.id))
   const someSelected = filtered.some((p) => selected.has(p.id))
 
+  // Obter opções únicas de classe_DG para joalheria
+  const classDgOptions = useMemo(() => {
+    const set = new Set<string>()
+    products.forEach((p) => {
+      if (p.classDg) set.add(p.classDg)
+    })
+    return Array.from(set).sort()
+  }, [products])
+
   const factor = rate * (1 + protectionPct / 100)
 
   return (
@@ -313,6 +336,21 @@ export function ProductsManager({
                       />
                       {c.label}
                     </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {segment === "joalheria" && classDgOptions.length > 0 && (
+            <Select value={classDgFilter} onValueChange={(v) => setClassDgFilter(v ?? "all")}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Classe DG" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as classes</SelectItem>
+                {classDgOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {opt}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -370,6 +408,13 @@ export function ProductsManager({
                     </TableHead>
                   )}
                   <TableHead>Produto</TableHead>
+                  {segment === "joalheria" && (
+                    <>
+                      <TableHead>Código</TableHead>
+                      <TableHead>Classe DG</TableHead>
+                      <TableHead>Material</TableHead>
+                    </>
+                  )}
                   <TableHead className="text-right">Qtd.</TableHead>
                   {showCostUsd && <TableHead className="text-right">Custo USD</TableHead>}
                   <TableHead className="text-right">Custo {currency}</TableHead>
@@ -416,6 +461,13 @@ export function ProductsManager({
                             SKU {p.sku} · margem {formatPct(Number(p.marginMin))}–{formatPct(Number(p.marginMax))}
                           </div>
                         </TableCell>
+                        {segment === "joalheria" && (
+                          <>
+                            <TableCell className="text-sm">{p.catalogCode || "—"}</TableCell>
+                            <TableCell className="text-sm font-medium">{p.classDg || "—"}</TableCell>
+                            <TableCell className="text-sm">{p.mainMaterial || "—"}</TableCell>
+                          </>
+                        )}
                         <TableCell className="text-right">
                           <Badge variant={low ? (p.quantity === 0 ? "destructive" : "secondary") : "outline"}>
                             {p.quantity}
