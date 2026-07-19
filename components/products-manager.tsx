@@ -122,6 +122,7 @@ export function ProductsManager({
   const [query, setQuery] = useState("")
   const [colorFilter, setColorFilter] = useState<string>("all")
   const [classDgFilter, setClassDgFilter] = useState<string>("all")
+  const [itemTypeFilter, setItemTypeFilter] = useState<string>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState<ProductInput>(EMPTY)
@@ -160,13 +161,15 @@ export function ProductsManager({
         colorFilter === "all" || (p.color ?? "").split(",").map((s) => s.trim()).includes(colorFilter) || effectiveColorLabel(p) === colorFilter
       const matchesClassDg =
         classDgFilter === "all" || p.classDg === classDgFilter
-      return matchesText && matchesColor && matchesClassDg
+      const matchesItemType =
+        itemTypeFilter === "all" || p.itemType === itemTypeFilter
+      return matchesText && matchesColor && matchesClassDg && matchesItemType
     })
-  }, [products, query, colorFilter, classDgFilter])
+  }, [products, query, colorFilter, classDgFilter, itemTypeFilter])
 
   const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(
     filtered,
-    `${query}|${colorFilter}|${classDgFilter}`,
+    `${query}|${colorFilter}|${classDgFilter}|${itemTypeFilter}`,
   )
 
   function openCreate() {
@@ -353,6 +356,20 @@ export function ProductsManager({
                     {opt}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          )}
+          {segment === "joalheria" && (
+            <Select value={itemTypeFilter} onValueChange={(v) => setItemTypeFilter(v ?? "all")}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Tipo de produto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os tipos</SelectItem>
+                <SelectItem value="gema">Gema</SelectItem>
+                <SelectItem value="joia">Joia</SelectItem>
+                <SelectItem value="semi-joia">Semi-joia</SelectItem>
+                <SelectItem value="escultura">Escultura</SelectItem>
               </SelectContent>
             </Select>
           )}
