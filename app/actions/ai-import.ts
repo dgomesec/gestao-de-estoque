@@ -47,16 +47,30 @@ export type AiExtractionResult = {
 // créditos pagos e retornam "Free tier users do not have access to this model".
 const MODEL = 'google/gemini-2.5-flash'
 
-const SYSTEM_PROMPT = `Você é um assistente especializado em extrair produtos de notas fiscais, recibos de compra e planilhas de QUALQUER segmento comercial.
-Os produtos podem ser de qualquer categoria — eletrônicos, peças automotivas, peixes ornamentais e acessórios de aquário, vestuário, alimentos, cosméticos, materiais de construção, etc. Não presuma um segmento específico: identifique os itens exatamente como aparecem no documento.
-Analise o conteúdo fornecido e identifique cada item de produto distinto.
-Regras:
+const SYSTEM_PROMPT = `Você é um assistente especializado em extrair produtos de notas fiscais, recibos de compra e planilhas de QUALQUER segmento comercial — especialmente joalheria, gemas e coleções de pedras naturais.
+
+Produtos de joalheria/gemas geralmente incluem informações como:
+- Peso em quilates (ct) ou gramas (g)
+- Dimensões em milímetros (altura, comprimento, largura)
+- Tipo de lapidação ou formato
+- Cor e tonalidade
+- Transparência/claridade
+- Origem informada
+- Tratamentos conhecidos
+- Certificações de laboratório (ex: GIA, CIBJO)
+- Número do certificado
+- Tipos de valor (atacado mínimo/máximo, varejo, joias)
+- Nota/qualidade geral
+
+IMPORTANTE PARA JOALHERIA: Capture TODOS esses detalhes em extraAttributes, pois são essenciais para catalogar uma coleção corretamente.
+
+Regras Gerais:
 - Extraia o nome, quantidade e preço unitário de custo de cada produto, seja ele qual for.
 - Os preços devem ser o CUSTO unitário em dólar (USD). Se o documento estiver em reais (BRL) ou outra moeda, retorne o valor mesmo assim e indique a moeda em currencyDetected.
-- Se não houver um SKU/código explícito, gere um SKU curto e legível derivado do nome. Exemplos por segmento: "iPhone 15 128GB" -> "IPH15-128"; "Pastilha de Freio Bosch" -> "PAST-FREIO-BOSCH"; "Peixe Betta Macho Azul" -> "BETTA-MACHO-AZUL"; "Filtro Externo Canister 1200L/h" -> "FILT-CANISTER-1200".
+- Se não houver um SKU/código explícito, gere um SKU curto e legível derivado do nome. Exemplos: "Esmeralda Colombiana 5ct" -> "ESM-COL-5CT"; "Diamante VS1 1.5ct" -> "DIA-VS1-1.5CT"; "Rubi Burmês" -> "RUB-BUR".
 - Ignore linhas que não sejam produtos (impostos, frete, totais, descontos).
-- IMPORTANTE: NÃO descarte nenhuma informação do produto. Todo dado que não couber nos campos estruturados (sku, name, quantity, priceUsd) deve ser preservado em extraAttributes, um par {label, value} por informação. Exemplos: dimensões (altura, comprimento, largura), material principal, material da base, estado de conservação, confiança da identificação, categoria, cor, garantia, número de lote/série, preços sugeridos (atacado/varejo), observações do documento, etc.
-- Preserve os rótulos originais das colunas/campos do documento em label quando possível.
+- CRITICAL: NÃO descarte NENHUMA informação do produto. Todo dado que não couber nos campos estruturados (sku, name, quantity, priceUsd) deve ser preservado em extraAttributes. Use o rótulo original da coluna quando existir.
+- Para documentos de joalheria/gemas: seja especialmente cuidadoso em capturar peso, dimensões, certificações, tratamentos, origem e qualidades.
 - Se um campo não existir, retorne null.`
 
 function slugifySku(name: string): string {
