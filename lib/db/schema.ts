@@ -211,26 +211,109 @@ export const products = pgTable(
   // Segmento do produto (ex: "eletronica", "joalheria"). Define quais campos estão preenchidos.
   segment: text("segment").notNull().default("eletronica"),
   // --- Campos específicos para joalheria ---
+  // Tipo de item: "gema" | "joia" | "semi-joia" | "escultura"
+  itemType: text("itemType"),
   // Categoria de joalheria (ex: "Peixe", "Gema", "Anel", "Colar", etc.)
   jewelryCategory: text("jewelryCategory"),
+  // Espécie da gema (ex: "Diamante", "Rubi", "Esmeralda", "Safira", etc.)
+  gemSpecies: text("gemSpecies"),
+  // Variedade da gema (ex: "Colombiana", "Birmanês", "Tailandês")
+  gemVariety: text("gemVariety"),
+  // Grupo de classificação (ex: "Gema Preciosa", "Semi-preciosa")
+  gemGroup: text("gemGroup"),
+  // Formato/lapidação (ex: "Redonda brilhante", "Cushion", "Oval", "Esmeralda")
+  cutFormat: text("cutFormat"),
+  // Cor e tonalidade (ex: "Azul royal", "Vermelho púrpura intenso")
+  colorTone: text("colorTone"),
+  // Transparência/Claridade (ex: "IF", "VVS1", "VS1", "SI1", "I1", "Opaco")
+  clarity: text("clarity"),
+  // Origem informada (ex: "Colômbia", "Birmânia", "Brasil")
+  origin: text("origin"),
+  // Tratamento conhecido (ex: "Óleo leve", "Calor", "Irradiação", "Sem tratamento")
+  treatment: text("treatment"),
+  // Peso em quilates (ct) - específico para gemas
+  weightCt: numeric("weightCt", { precision: 10, scale: 4 }),
+  // Peso confirmado (booleano)
+  weightConfirmed: boolean("weightConfirmed").default(false),
+  // Método de pesagem (ex: "Balança analítica", "Visual")
+  weightMethod: text("weightMethod"),
   // Dimensões em centímetros
   heightCm: numeric("heightCm", { precision: 6, scale: 2 }),
   lengthCm: numeric("lengthCm", { precision: 6, scale: 2 }),
   widthCm: numeric("widthCm", { precision: 6, scale: 2 }),
   // Material principal (ex: "Prata natural", "Ouro 18k", "Cristal", etc.)
   mainMaterial: text("mainMaterial"),
+  // Certificado (sim/não)
+  hasCertificate: boolean("hasCertificate").default(false),
+  // Laboratório certificador (ex: "GIA", "CIBJO", "Antwerp", "IGI")
+  certificateLab: text("certificateLab"),
+  // Número do certificado
+  certificateNumber: text("certificateNumber"),
+  // Prioridade de certificação (ex: "Alta", "Média", "Baixa")
+  certificatePriority: text("certificatePriority"),
+  // Recomendação de certificação
+  certificateRecommendation: text("certificateRecommendation"),
+  // Tipo de laudo sugerido (ex: "Relatório completo", "Identificação")
+  reportTypeSuggested: text("reportTypeSuggested"),
+  // Laboratório sugerido para certificação
+  labSuggested: text("labSuggested"),
   // Material da base/suporte (ex: "Vidro", "Madeira", "Acrílico", etc.)
   baseMaterial: text("baseMaterial"),
   // Estado de conservação (ex: "Excelente", "Bom", "Aceitável", "Restauração necessária")
   conservationState: text("conservationState"),
   // Nível de confiança na identificação do material (ex: "Alto", "Médio", "Baixo")
   identificationConfidence: text("identificationConfidence"),
-  // Preço especial de varejo (quando diferente do calculado)
+  // Valores em BRL (mantém histórico de avaliações)
+  valuePaidTotalBrl: numeric("valuePaidTotalBrl", { precision: 12, scale: 2 }),
+  // Valor mínimo de atacado em BRL
+  valueWholesaleMinBrl: numeric("valueWholesaleMinBrl", { precision: 12, scale: 2 }),
+  // Valor máximo de atacado em BRL
+  valueWholesaleMaxBrl: numeric("valueWholesaleMaxBrl", { precision: 12, scale: 2 }),
+  // Valor mínimo de varejo em BRL
+  valueRetailMinBrl: numeric("valueRetailMinBrl", { precision: 12, scale: 2 }),
+  // Valor máximo de varejo em BRL
+  valueRetailMaxBrl: numeric("valueRetailMaxBrl", { precision: 12, scale: 2 }),
+  // Valor de referência central em BRL
+  valueCentralReferenceBrl: numeric("valueCentralReferenceBrl", { precision: 12, scale: 2 }),
+  // Valor de referência por quilate em BRL
+  valuePctReferenceBrl: numeric("valuePctReferenceBrl", { precision: 12, scale: 2 }),
+  // Valor mínimo em joia em BRL
+  valueJewelryMinBrl: numeric("valueJewelryMinBrl", { precision: 12, scale: 2 }),
+  // Valor máximo em joia em BRL
+  valueJewelryMaxBrl: numeric("valueJewelryMaxBrl", { precision: 12, scale: 2 }),
+  // Status do valor (ex: "Aprovado", "Pendente revisão", "Desatualizado")
+  valueStatus: text("valueStatus"),
+  // Confiança da estimativa de valor (ex: "Alta", "Média", "Baixa")
+  valueConfidence: text("valueConfidence"),
+  // Preço especial de varejo USD (quando diferente do calculado)
   retailPriceUsd: numeric("retailPriceUsd", { precision: 12, scale: 2 }),
   // Código de identificação/catalogação
   catalogCode: text("catalogCode"),
+  // Coleção (ex: "Coleção Privada", "Especial")
+  collection: text("collection"),
   // Classificação DG Private Collection (ex: "A1", "B2", "Premium", etc.)
   classDg: text("classDg"),
+  // Nota geral de 1-10
+  generalRating: numeric("generalRating", { precision: 3, scale: 1 }),
+  // Melhor aplicação (ex: "Investimento", "Coleção", "Joia")
+  bestApplication: text("bestApplication"),
+  // Destino sugerido (ex: "Venda", "Conservação", "Certificação")
+  suggestedDestination: text("suggestedDestination"),
+  // Localização física: caixa/envelope
+  storageBox: text("storageBox"),
+  storageEnvelope: text("storageEnvelope"),
+  // Posição/número do item no armazenamento
+  storagePosition: text("storagePosition"),
+  // Local físico (ex: "Cofre", "Gabinete A", etc.)
+  physicalLocation: text("physicalLocation"),
+  // Status geral (ex: "Ativo", "Arquivado", "Vendido", "Em manutenção")
+  itemStatus: text("itemStatus"),
+  // Referências de fotos
+  photosReference: text("photosReference"),
+  // Pendências (ex: "Aguardando certificação", "Restauração necessária")
+  pendencies: text("pendencies"),
+  // Observações gerais
+  notes: text("notes"),
   // URL do arquivo de detalhes adicionais (anexo/documento/certificado/fotos)
   detailsFileUrl: text("detailsFileUrl"),
   // Nome do arquivo de detalhes
