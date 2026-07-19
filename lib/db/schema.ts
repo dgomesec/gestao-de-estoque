@@ -229,6 +229,8 @@ export const products = pgTable(
   retailPriceUsd: numeric("retailPriceUsd", { precision: 12, scale: 2 }),
   // Código de identificação/catalogação
   catalogCode: text("catalogCode"),
+  // Classificação DG Private Collection (ex: "A1", "B2", "Premium", etc.)
+  classDg: text("classDg"),
   // URL do arquivo de detalhes adicionais (anexo/documento/certificado/fotos)
   detailsFileUrl: text("detailsFileUrl"),
   // Nome do arquivo de detalhes

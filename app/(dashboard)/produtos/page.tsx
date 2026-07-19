@@ -24,6 +24,7 @@ export default async function ProductsPage() {
       />
       <ProductsManager
         products={products}
+        segment={ctx.tenant?.segment ?? "eletronica"}
         rate={settings.exchangeRate}
         currency={settings.displayCurrency}
         showCostUsd={settings.showCostUsd}
