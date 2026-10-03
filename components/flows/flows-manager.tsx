@@ -166,7 +166,7 @@ export function FlowsManager({
         </TabsContent>
 
         <TabsContent value="documents">
-          <DocumentsPanel orders={orders} documents={documents} templates={templateOptions} canCreate={perms.create} />
+          <DocumentsPanel orders={orders} documents={documents} templates={templateOptions} canCreate={perms.create} canDelete={perms.delete} />
         </TabsContent>
 
         <TabsContent value="activity">
