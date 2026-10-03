@@ -368,6 +368,8 @@ export const sales = pgTable("sales", {
   // Texto livre (compatibilidade) e vínculo opcional com o cadastro de clientes.
   customer: text("customer"),
   customerId: integer("customerId"),
+  // Pescador (cadastro com partyType "pescador") associado à venda — ramo de aquarismo.
+  fishermanId: integer("fishermanId"),
   soldBy: text("soldBy").notNull(),
   // Agrupa todas as linhas de um mesmo pedido (venda/orçamento com vários itens).
   // Permite gerar um único recibo e um único link de aprovação por pedido.
@@ -395,6 +397,10 @@ export const customers = pgTable("customers", {
   city: text("city"),
   state: text("state"),
   zipCode: text("zipCode"),
+  neighborhood: text("neighborhood"),
+  country: text("country"),
+  // Registro Geral da Atividade Pesqueira (RGP), usado quando partyType = "pescador".
+  rgp: text("rgp"),
   notes: text("notes"),
   // "cliente" | "fornecedor" | "pescador" (usado no ramo de aquarismo).
   partyType: text("partyType"),

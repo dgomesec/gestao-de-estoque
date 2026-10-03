@@ -65,6 +65,8 @@ type Sale = {
   profitBrl: string
   customer: string | null
   customerId: number | null
+  fishermanId: number | null
+  fishermanName: string | null
   customerName: string | null
   customerPhone: string | null
   customerEmail: string | null
@@ -98,6 +100,8 @@ type Order = {
   createdAt: Date
   customer: string | null
   customerId: number | null
+  fishermanId: number | null
+  fishermanName: string | null
   customerName: string | null
   customerPhone: string | null
   customerEmail: string | null
@@ -123,7 +127,7 @@ type ProductOpt = {
   marginMax: string
 }
 
-type CustomerOpt = { id: number; name: string; phone: string | null }
+type CustomerOpt = { id: number; name: string; phone: string | null; partyType: string | null; rgp: string | null }
 
 type Perms = { create: boolean; update: boolean; delete: boolean }
 
@@ -153,6 +157,7 @@ export function SalesManager({
   currency = "BRL",
   showCostUsd = true,
   protectionPct,
+  industry = null,
   perms,
 }: {
   sales: Sale[]
@@ -162,8 +167,11 @@ export function SalesManager({
   currency?: DisplayCurrency
   showCostUsd?: boolean
   protectionPct: number
+  industry?: string | null
   perms: Perms
 }) {
+  const showFisherman = industry === "aquarismo"
+  const fishermen = useMemo(() => customers.filter((c) => c.partyType === "pescador"), [customers])
   // Moeda de venda atual do tenant (para novas vendas e prévias no carrinho).
   const fmt = (v: number) => formatMoney(v, currency)
   // Rótulo/formatação do custo unitário: em USD quando habilitado, senão na moeda.
@@ -180,6 +188,8 @@ export function SalesManager({
   const [manualRate, setManualRate] = useState(rate)
   const [customerId, setCustomerId] = useState<string>(NO_CUSTOMER)
   const [customerText, setCustomerText] = useState("")
+  const [fishermanId, setFishermanId] = useState<string>(NO_CUSTOMER)
+  const [editFishermanId, setEditFishermanId] = useState<string>(NO_CUSTOMER)
   const [filter, setFilter] = useState<"all" | "sale" | "quote">("all")
   // Busca livre na lista de vendas (código, produto, SKU, cliente).
   const [listQuery, setListQuery] = useState("")
@@ -224,6 +234,8 @@ export function SalesManager({
         createdAt: first.createdAt,
         customer: first.customer,
         customerId: first.customerId,
+        fishermanId: first.fishermanId,
+        fishermanName: first.fishermanName,
         customerName: first.customerName,
         customerPhone: first.customerPhone,
         customerEmail: first.customerEmail,
@@ -371,6 +383,7 @@ export function SalesManager({
     setProductColor("all")
     setUseManualRate(false)
     setManualRate(rate)
+    setFishermanId(o.fishermanId ? String(o.fishermanId) : NO_CUSTOMER)
     if (o.customerId) {
       setCustomerId(String(o.customerId))
       setCustomerText("")
@@ -475,6 +488,7 @@ export function SalesManager({
           kind,
           manualRate: useManualRate ? manualRate : null,
           customerId: customerId !== NO_CUSTOMER ? Number(customerId) : null,
+          fishermanId: showFisherman && fishermanId !== NO_CUSTOMER ? Number(fishermanId) : null,
           customer: customerId === NO_CUSTOMER ? customerText : undefined,
         })
         toast.success(
@@ -524,6 +538,7 @@ export function SalesManager({
   function openEditCustomer(o: Order) {
     setEditCustomerFor(o)
     setEditCustomerId(o.customerId ? String(o.customerId) : NO_CUSTOMER)
+    setEditFishermanId(o.fishermanId ? String(o.fishermanId) : NO_CUSTOMER)
     setEditCustomerText(o.customerId ? "" : o.customer ?? "")
   }
 
@@ -553,6 +568,7 @@ export function SalesManager({
       try {
         await updateOrderCustomer(o.groupId, {
           customerId: editCustomerId !== NO_CUSTOMER ? Number(editCustomerId) : null,
+          fishermanId: showFisherman && editFishermanId !== NO_CUSTOMER ? Number(editFishermanId) : null,
           customer: editCustomerId === NO_CUSTOMER ? editCustomerText : null,
         })
         toast.success("Cliente atualizado")
@@ -974,6 +990,7 @@ export function SalesManager({
                         </TableCell>
                         <TableCell className="align-top text-sm">
                           {o.customerName ?? o.customer ?? <span className="text-muted-foreground">—</span>}
+                          {o.fishermanName && <span className="block text-xs text-muted-foreground">Pescador: {o.fishermanName}</span>}
                         </TableCell>
                         <TableCell className="align-top text-right tabular-nums">{o.totalQty}</TableCell>
                         <TableCell className="align-top text-right tabular-nums font-medium">
@@ -1288,6 +1305,26 @@ export function SalesManager({
               )}
             </div>
 
+            {showFisherman && (
+              <div className="space-y-1.5">
+                <Label>Pescador</Label>
+                <Select value={fishermanId} onValueChange={(v) => setFishermanId(v ?? NO_CUSTOMER)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_CUSTOMER}>Sem pescador</SelectItem>
+                    {fishermen.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                        {c.rgp ? ` · RGP ${c.rgp}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {showCostUsd && currency !== "USD" && (
               <div className="rounded-lg border p-3">
                 <div className="flex items-center justify-between">
@@ -1401,6 +1438,26 @@ export function SalesManager({
               />
             )}
           </div>
+
+            {showFisherman && (
+              <div className="space-y-1.5">
+                <Label>Pescador</Label>
+                <Select value={editFishermanId} onValueChange={(v) => setEditFishermanId(v ?? NO_CUSTOMER)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_CUSTOMER}>Sem pescador</SelectItem>
+                    {fishermen.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                        {c.rgp ? ` · RGP ${c.rgp}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditCustomerFor(null)} disabled={isPending}>

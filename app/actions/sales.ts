@@ -8,6 +8,9 @@ import { logAudit } from '@/lib/audit'
 import { getEffectiveRate, computeBrl } from '@/lib/exchange'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+import { alias } from 'drizzle-orm/pg-core'
+
+const fishermen = alias(customers, 'fishermen')
 
 export type SaleKind = 'sale' | 'quote'
 
@@ -31,6 +34,8 @@ export async function getSales(limit = 300) {
       profitBrl: sales.profitBrl,
       customer: sales.customer,
       customerId: sales.customerId,
+      fishermanId: sales.fishermanId,
+      fishermanName: fishermen.name,
       customerName: customers.name,
       customerPhone: customers.phone,
       customerEmail: customers.email,
@@ -44,6 +49,7 @@ export async function getSales(limit = 300) {
     .from(sales)
     .leftJoin(products, eq(sales.productId, products.id))
     .leftJoin(customers, eq(sales.customerId, customers.id))
+    .leftJoin(fishermen, eq(sales.fishermanId, fishermen.id))
     .where(eq(sales.tenantId, ctx.tenantId))
     .orderBy(desc(sales.createdAt))
     .limit(limit)
@@ -66,6 +72,7 @@ type RegisterInput = {
   kind?: SaleKind
   // Cliente: vínculo com cadastro (customerId) e/ou texto livre (customer).
   customerId?: number | null
+  fishermanId?: number | null
   customer?: string
   // Margem (%) informada manualmente pelo vendedor. Se ausente, é calculada.
   marginPct?: number
@@ -133,6 +140,7 @@ export async function registerSale(input: RegisterInput) {
       profitBrl: String(profitBrl),
       customer: input.customer?.trim() || null,
       customerId: input.customerId ?? null,
+      fishermanId: input.fishermanId ?? null,
       soldBy: ctx.user.id,
       groupId: crypto.randomUUID(),
       approvalToken: kind === 'quote' ? crypto.randomUUID() : null,
@@ -186,6 +194,7 @@ type RegisterItemsInput = {
   items: SaleItemInput[]
   kind?: SaleKind
   customerId?: number | null
+  fishermanId?: number | null
   customer?: string
   manualRate?: number | null
 }
@@ -273,6 +282,7 @@ export async function registerSaleItems(input: RegisterItemsInput) {
         profitBrl: String(profitBrl),
         customer: input.customer?.trim() || null,
         customerId: input.customerId ?? null,
+      fishermanId: input.fishermanId ?? null,
         soldBy: ctx.user.id,
         groupId,
         approvalToken,
@@ -662,7 +672,7 @@ export async function updateOrderInvoices(groupId: string, invoiceNumbers: strin
  */
 export async function updateOrderCustomer(
   groupId: string,
-  input: { customerId?: number | null; customer?: string | null },
+  input: { customerId?: number | null; customer?: string | null; fishermanId?: number | null },
 ) {
   const ctx = await requirePermission('sales', 'update')
   if (!groupId) throw new Error('Pedido inválido')
@@ -675,6 +685,15 @@ export async function updateOrderCustomer(
 
   const customerId = input.customerId ?? null
   const customerText = customerId ? null : input.customer?.trim() || null
+
+  let fishermanId = input.fishermanId ?? null
+  if (fishermanId) {
+    const [f] = await db
+      .select({ partyType: customers.partyType })
+      .from(customers)
+      .where(and(eq(customers.id, fishermanId), eq(customers.tenantId, ctx.tenantId)))
+    if (!f || f.partyType !== 'pescador') fishermanId = null
+  }
 
   let customerLabel = 'avulso/sem cliente'
   if (customerId) {
@@ -689,7 +708,7 @@ export async function updateOrderCustomer(
 
   await db
     .update(sales)
-    .set({ customerId, customer: customerText })
+    .set({ customerId, customer: customerText, fishermanId })
     .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
 
   await logAudit({
