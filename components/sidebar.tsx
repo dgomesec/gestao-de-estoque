@@ -23,6 +23,7 @@ import {
   X,
   ArrowLeft,
   Lock,
+  Workflow,
 } from 'lucide-react'
 
 type NavItem = { href: string; label: string; resource: string }
@@ -34,6 +35,7 @@ const ICONS: Record<string, React.ElementType> = {
   '/vendas': ShoppingCart,
   '/clientes': UserRound,
   '/relatorios': BarChart3,
+  '/fluxos': Workflow,
   '/usuarios': Users,
   '/papeis': ShieldCheck,
   '/configuracoes': Settings,

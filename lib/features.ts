@@ -33,6 +33,7 @@ export const TOGGLEABLE_FEATURES: ResourceKey[] = [
   'products',
   'stock',
   'sales',
+  'flows',
   'customers',
   'users',
   'roles',
