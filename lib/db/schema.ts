@@ -394,6 +394,8 @@ export const customers = pgTable("customers", {
   state: text("state"),
   zipCode: text("zipCode"),
   notes: text("notes"),
+  // "cliente" | "fornecedor" | "pescador" (usado no ramo de aquarismo).
+  partyType: text("partyType"),
   createdBy: text("createdBy").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
@@ -449,7 +451,9 @@ export const settings = pgTable("settings", {
   storeAddress: text("storeAddress"),
   storePhone: text("storePhone"),
   storeEmail: text("storeEmail"),
-})
+  // Ramo de atuação declarado pelo cliente (ex.: "aquarismo").
+  industry: text("industry"),
+  })
 
 // --- Audit & monitoring -----------------------------------------------------
 // Every meaningful action is recorded here: logins, and create/update/delete

@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/rbac"
 import { logAudit } from "@/lib/audit"
 import { getEffectiveRate } from "@/lib/exchange"
 import { toDisplayCurrency, currencySymbol } from "@/lib/format"
+import { isValidIndustry } from "@/lib/industries"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { put, del } from "@vercel/blob"
@@ -135,6 +136,32 @@ export async function updateStoreInfo(input: {
 
   revalidatePath("/configuracoes")
   revalidatePath("/vendas")
+  return { ok: true as const }
+}
+
+export async function updateIndustry(industry: string) {
+  const ctx = await requirePermission("settings", "update")
+
+  if (industry && !isValidIndustry(industry)) throw new Error("Ramo de atuação inválido")
+
+  await db
+    .update(settings)
+    .set({ industry: industry || null })
+    .where(eq(settings.tenantId, ctx.tenantId))
+
+  await logAudit({
+    action: "update",
+    resource: "settings",
+    tenantId: ctx.tenantId,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: `Ramo de atuação definido: ${industry || "não informado"}`,
+    metadata: { industry },
+  })
+
+  revalidatePath("/configuracoes")
+  revalidatePath("/clientes")
   return { ok: true as const }
 }
 

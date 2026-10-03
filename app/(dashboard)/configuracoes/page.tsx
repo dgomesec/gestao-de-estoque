@@ -26,6 +26,7 @@ export default async function SettingsPage() {
           storePhone: settings.storePhone,
           storeEmail: settings.storeEmail,
         }}
+        industry={settings.industry}
         canEdit={hasPermission(ctx, "settings", "update")}
       />
     </>

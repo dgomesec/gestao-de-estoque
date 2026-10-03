@@ -14,8 +14,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { RefreshCw, Save, Upload, Trash2, Store } from "lucide-react"
+import { RefreshCw, Save, Upload, Trash2, Store, Briefcase } from "lucide-react"
+import { INDUSTRIES, isAquariumIndustry } from "@/lib/industries"
 import {
+  updateIndustry,
   updateSettings,
   refreshLiveRate,
   updateStoreInfo,
@@ -48,8 +50,10 @@ type StoreFields = {
 export function SettingsManager({
   initial,
   store,
+  industry: initialIndustry,
   canEdit,
 }: {
+  industry: string | null
   initial: {
     displayCurrency: DisplayCurrency
     exchangeRate: number
@@ -86,6 +90,19 @@ export function SettingsManager({
   const [logoUrl, setLogoUrl] = useState(store.storeLogoUrl)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [industry, setIndustry] = useState(initialIndustry ?? "")
+
+  function saveIndustry() {
+    startTransition(async () => {
+      try {
+        await updateIndustry(industry)
+        toast.success("Ramo de atuação salvo")
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar ramo de atuação")
+      }
+    })
+  }
 
   function saveStore() {
     startTransition(async () => {
@@ -287,6 +304,51 @@ export function SettingsManager({
               <Button onClick={saveStore} disabled={isPending} className="gap-2">
                 <Save className="size-4" aria-hidden="true" />
                 {isPending ? "Salvando..." : "Salvar dados da loja"}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="size-5" aria-hidden="true" />
+              Ramo de atuação
+            </CardTitle>
+            <CardDescription>
+              Informe a indústria da sua empresa para liberar recursos específicos do seu segmento.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5 sm:max-w-md">
+              <Label htmlFor="industry">Indústria</Label>
+              <Select
+                value={industry || undefined}
+                onValueChange={(v) => setIndustry(v ?? "")}
+                disabled={!canEdit}
+              >
+                <SelectTrigger id="industry">
+                  <SelectValue placeholder="Selecione o ramo de atuação" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INDUSTRIES.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {isAquariumIndustry(industry) && (
+              <p className="text-sm text-muted-foreground">
+                No cadastro de clientes você poderá classificar cada contato como cliente, fornecedor ou
+                pescador.
+              </p>
+            )}
+            {canEdit && (
+              <Button onClick={saveIndustry} disabled={isPending} className="gap-2">
+                <Save className="size-4" aria-hidden="true" />
+                {isPending ? "Salvando..." : "Salvar ramo de atuação"}
               </Button>
             )}
           </CardContent>
