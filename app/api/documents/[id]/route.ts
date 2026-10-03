@@ -1,35 +1,48 @@
-import { and, eq } from 'drizzle-orm'
-import { db } from '@/lib/db'
-import { generatedDocuments } from '@/lib/db/schema'
 import { getAuthContext, hasPermission } from '@/lib/rbac'
-import { buildOrderContext } from '@/lib/flows/context'
-import { generatePdfForOrder } from '@/lib/flows/engine'
-import type { DocSpec } from '@/lib/flows/types'
+import { MIME, buildDraftEml, renderStoredDocument, type DocFormat } from '@/lib/flows/documents'
 
 export const runtime = 'nodejs'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * GET /api/documents/:id?format=pdf|docx|eml[&download=1]
+ * - pdf: exibe inline (ou baixa com download=1)
+ * - docx: baixa cópia em Word para edição
+ * - eml: rascunho com o PDF anexado, que o Outlook instalado abre pronto para enviar
+ */
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext()
   if (!ctx || !ctx.tenantId || !hasPermission(ctx, 'flows', 'view')) {
     return new Response('Não autorizado', { status: 401 })
   }
   const { id } = await params
-  const [doc] = await db
-    .select()
-    .from(generatedDocuments)
-    .where(and(eq(generatedDocuments.id, Number(id)), eq(generatedDocuments.tenantId, ctx.tenantId)))
-  if (!doc || !doc.groupId) return new Response('Documento não encontrado', { status: 404 })
+  const url = new URL(req.url)
+  const requested = url.searchParams.get('format') ?? 'pdf'
+  const format: DocFormat = requested === 'docx' ? 'docx' : 'pdf'
 
-  const oc = await buildOrderContext(ctx.tenantId, doc.groupId)
-  if (!oc) return new Response('Pedido não encontrado', { status: 404 })
+  const doc = await renderStoredDocument(ctx.tenantId, Number(id), format)
+  if (!doc) return new Response('Documento não encontrado', { status: 404 })
 
-  const { spec } = JSON.parse(doc.payload) as { spec: DocSpec }
-  const pdf = await generatePdfForOrder(oc, spec)
-  const filename = `${doc.title}`.replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'documento'
-  return new Response(new Uint8Array(pdf), {
+  if (requested === 'eml') {
+    const eml = buildDraftEml({
+      to: doc.customerEmail ?? '',
+      subject: `${doc.title} - ${doc.storeName}`,
+      body: `Olá,\r\n\r\nSegue em anexo o documento "${doc.title}".\r\n\r\nAtenciosamente,\r\n${doc.storeName}`,
+      attachments: [{ filename: doc.filename, mime: MIME.pdf, content: doc.buffer }],
+    })
+    return new Response(new Uint8Array(eml), {
+      headers: {
+        'Content-Type': 'message/rfc822',
+        'Content-Disposition': `attachment; filename="${doc.filename.replace(/\.pdf$/, '')}.eml"`,
+        'Cache-Control': 'private, no-store',
+      },
+    })
+  }
+
+  const disposition = format === 'docx' || url.searchParams.get('download') === '1' ? 'attachment' : 'inline'
+  return new Response(new Uint8Array(doc.buffer), {
     headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${filename}.pdf"`,
+      'Content-Type': MIME[format],
+      'Content-Disposition': `${disposition}; filename="${doc.filename}"`,
       'Cache-Control': 'private, no-store',
     },
   })
