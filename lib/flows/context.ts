@@ -37,16 +37,23 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     partyType = c?.partyType ?? "cliente"
   }
 
-  const [profitRow] = await db
-    .select({ p: sales.profitBrl })
-    .from(sales)
-    .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, tenantId)))
-  void profitRow
   const profitRows = await db
-    .select({ p: sales.profitBrl })
+    .select({ p: sales.profitBrl, fishermanId: sales.fishermanId })
     .from(sales)
     .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, tenantId)))
   const profit = profitRows.reduce((s, r) => s + Number(r.p), 0)
+
+  const fishermanId = profitRows.find((r) => r.fishermanId != null)?.fishermanId ?? null
+  let fishermanName = ""
+  let fishermanRgp = ""
+  if (fishermanId != null) {
+    const [f] = await db
+      .select({ name: customers.name, rgp: customers.rgp })
+      .from(customers)
+      .where(and(eq(customers.id, fishermanId), eq(customers.tenantId, tenantId)))
+    fishermanName = f?.name ?? ""
+    fishermanRgp = f?.rgp ?? ""
+  }
 
   const qty = order.items.reduce((s, i) => s + i.quantity, 0)
   const total = order.currency === "USD" ? order.totalUsd : order.totalBrl
@@ -81,6 +88,9 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "cliente.estado": state,
     "cliente.identificado": order.customer.id != null,
     "cliente.tipo": partyType,
+    "pedido.temPescador": fishermanId != null,
+    "pescador.nome": fishermanName,
+    "pescador.rgp": fishermanRgp,
   }
 
   const vars: Record<string, string> = {
@@ -100,6 +110,8 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "cliente.telefone": order.customer.phone ?? "",
     "cliente.documento": order.customer.document ?? "",
     "cliente.tipo": partyTypeLabel(partyType),
+    "pescador.nome": fishermanName,
+    "pescador.rgp": fishermanRgp,
     "link.recibo": `${base}/recibo/${order.groupId}`,
     "link.aprovacao": order.approvalToken ? `${base}/orcamento/${order.approvalToken}` : "",
     hoje: formatDate(new Date()),

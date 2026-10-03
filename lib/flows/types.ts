@@ -37,6 +37,9 @@ export const FIELDS: FieldDef[] = [
   { key: "cliente.estado", label: "Estado do cliente", type: "text", group: "Cliente" },
   { key: "cliente.identificado", label: "Cliente cadastrado", type: "boolean", group: "Cliente" },
   { key: "cliente.tipo", label: "Tipo do cadastro", type: "text", group: "Cliente", options: [{ value: "cliente", label: "Cliente" }, { value: "fornecedor", label: "Fornecedor" }, { value: "pescador", label: "Pescador" }] },
+  { key: "pedido.temPescador", label: "Pedido com pescador associado", type: "boolean", group: "Pedido" },
+  { key: "pescador.nome", label: "Nome do pescador associado", type: "text", group: "Pedido" },
+  { key: "pescador.rgp", label: "RGP do pescador associado", type: "text", group: "Pedido" },
 ]
 export const FIELD_MAP = Object.fromEntries(FIELDS.map((f) => [f.key, f])) as Record<string, FieldDef>
 
@@ -109,6 +112,8 @@ export const TEMPLATE_VARIABLES: { key: string; label: string }[] = [
   { key: "cliente.telefone", label: "Telefone do cliente" },
   { key: "cliente.documento", label: "Documento do cliente" },
   { key: "cliente.tipo", label: "Tipo do cadastro (Cliente, Fornecedor ou Pescador)" },
+  { key: "pescador.nome", label: "Nome do pescador associado" },
+  { key: "pescador.rgp", label: "RGP do pescador associado" },
   { key: "link.recibo", label: "Link do recibo" },
   { key: "link.aprovacao", label: "Link de aprovação" },
   { key: "hoje", label: "Data de hoje" },

@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation"
 import { getAuthContext, hasPermission } from "@/lib/rbac"
-import { getUsers } from "@/app/actions/users"
-import { getRoles } from "@/app/actions/roles"
+import { getUsers, getAssignableRoles } from "@/app/actions/users"
 import { PageHeader } from "@/components/page-header"
 import { UsersManager } from "@/components/users-manager"
 
@@ -10,7 +9,7 @@ export default async function UsersPage() {
   if (!ctx) redirect("/sign-in")
   if (!hasPermission(ctx, "users", "view")) redirect("/dashboard")
 
-  const [users, roles] = await Promise.all([getUsers(), getRoles()])
+  const [users, roles] = await Promise.all([getUsers(), getAssignableRoles()])
 
   return (
     <>

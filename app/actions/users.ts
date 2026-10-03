@@ -19,6 +19,29 @@ export type UserRow = {
   twoFactorRequired: boolean
 }
 
+export type AssignableRole = {
+  id: number
+  name: string
+  description: string | null
+  isSuperAdmin: boolean
+}
+
+/** Papéis disponíveis para atribuição; independe da funcionalidade "Papéis" do tenant. */
+export async function getAssignableRoles(): Promise<AssignableRole[]> {
+  const ctx = await requirePermission("users", "view")
+  const rows = await db
+    .select({
+      id: appRoles.id,
+      name: appRoles.name,
+      description: appRoles.description,
+      isSuperAdmin: appRoles.isSuperAdmin,
+    })
+    .from(appRoles)
+    .where(eq(appRoles.tenantId, ctx.tenantId))
+    .orderBy(appRoles.id)
+  return rows
+}
+
 export async function getUsers(): Promise<UserRow[]> {
   const ctx = await requirePermission("users", "view")
 
