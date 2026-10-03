@@ -60,6 +60,9 @@ const EMPTY: CustomerInput = {
   city: "",
   state: "",
   zipCode: "",
+  neighborhood: "",
+  country: "Brasil",
+  rgp: "",
   notes: "",
   partyType: "",
 }
@@ -108,6 +111,35 @@ export function CustomersManager({
     setDialogOpen(true)
   }
 
+  const [cepLoading, setCepLoading] = useState(false)
+
+  async function lookupCep(raw: string) {
+    const digits = raw.replace(/\D/g, "")
+    if (digits.length !== 8) return
+    setCepLoading(true)
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`)
+      const data = await res.json()
+      if (data.erro) {
+        toast.error("CEP não encontrado")
+        return
+      }
+      setForm((f) => ({
+        ...f,
+        zipCode: `${digits.slice(0, 5)}-${digits.slice(5)}`,
+        addressLine: data.logradouro || f.addressLine,
+        neighborhood: data.bairro || f.neighborhood,
+        city: data.localidade || f.city,
+        state: (data.uf || f.state || "").toUpperCase(),
+        country: "Brasil",
+      }))
+    } catch {
+      toast.error("Não foi possível consultar o CEP")
+    } finally {
+      setCepLoading(false)
+    }
+  }
+
   function openEdit(c: CustomerWithStats) {
     setEditing(c)
     setForm({
@@ -119,6 +151,9 @@ export function CustomersManager({
       city: c.city ?? "",
       state: c.state ?? "",
       zipCode: c.zipCode ?? "",
+      neighborhood: c.neighborhood ?? "",
+      country: c.country ?? "",
+      rgp: c.rgp ?? "",
       notes: c.notes ?? "",
       partyType: c.partyType ?? "",
     })
@@ -350,6 +385,13 @@ export function CustomersManager({
               </div>
             </div>
 
+            {showPartyType && form.partyType === "pescador" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="crgp">RGP (Registro Geral da Atividade Pesqueira)</Label>
+                <Input id="crgp" value={form.rgp} onChange={(e) => setForm({ ...form, rgp: e.target.value })} />
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label htmlFor="cemail">E-mail</Label>
               <Input
@@ -358,6 +400,27 @@ export function CustomersManager({
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="czip">CEP</Label>
+                <Input
+                  id="czip"
+                  inputMode="numeric"
+                  placeholder="00000-000"
+                  value={form.zipCode}
+                  onChange={(e) => {
+                    setForm({ ...form, zipCode: e.target.value })
+                    if (e.target.value.replace(/\D/g, "").length === 8) lookupCep(e.target.value)
+                  }}
+                />
+                {cepLoading && <p className="text-xs text-muted-foreground">Buscando endereço...</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ccountry">País</Label>
+                <Input id="ccountry" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -371,7 +434,11 @@ export function CustomersManager({
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <div className="space-y-1.5 sm:col-span-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="cneigh">Bairro</Label>
+                <Input id="cneigh" value={form.neighborhood} onChange={(e) => setForm({ ...form, neighborhood: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="ccity">Cidade</Label>
                 <Input id="ccity" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
               </div>
@@ -383,10 +450,6 @@ export function CustomersManager({
                   value={form.state}
                   onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })}
                 />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="czip">CEP</Label>
-                <Input id="czip" value={form.zipCode} onChange={(e) => setForm({ ...form, zipCode: e.target.value })} />
               </div>
             </div>
 

@@ -17,6 +17,9 @@ export type CustomerInput = {
   city?: string
   state?: string
   zipCode?: string
+  neighborhood?: string
+  country?: string
+  rgp?: string
   notes?: string
   partyType?: string
 }
@@ -31,6 +34,9 @@ export type CustomerWithStats = {
   city: string | null
   state: string | null
   zipCode: string | null
+  neighborhood: string | null
+  country: string | null
+  rgp: string | null
   notes: string | null
   partyType: string | null
   createdAt: Date
@@ -55,6 +61,9 @@ export async function getCustomers(): Promise<CustomerWithStats[]> {
       city: customers.city,
       state: customers.state,
       zipCode: customers.zipCode,
+      neighborhood: customers.neighborhood,
+      country: customers.country,
+      rgp: customers.rgp,
       notes: customers.notes,
       partyType: customers.partyType,
       createdAt: customers.createdAt,
@@ -95,6 +104,9 @@ function clean(input: CustomerInput) {
     city: input.city?.trim() || null,
     state: input.state?.trim() || null,
     zipCode: input.zipCode?.trim() || null,
+    neighborhood: input.neighborhood?.trim() || null,
+    country: input.country?.trim() || null,
+    rgp: input.partyType === 'pescador' ? input.rgp?.trim() || null : null,
     notes: input.notes?.trim() || null,
     partyType: input.partyType?.trim() || null,
   }
@@ -190,7 +202,7 @@ export async function deleteCustomer(id: number) {
 export async function getCustomerOptions() {
   const ctx = await requirePermission('sales', 'view')
   return db
-    .select({ id: customers.id, name: customers.name, phone: customers.phone })
+    .select({ id: customers.id, name: customers.name, phone: customers.phone, partyType: customers.partyType, rgp: customers.rgp })
     .from(customers)
     .where(eq(customers.tenantId, ctx.tenantId))
     .orderBy(customers.name)
