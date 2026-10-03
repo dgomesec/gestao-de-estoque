@@ -42,8 +42,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen, Printer, Mail, MessageCircle, BadgeCheck, Copy } from "lucide-react"
-import { registerSaleItems, convertOrder, deleteOrder, deleteOrders, updateOrderCustomer, type SaleKind } from "@/app/actions/sales"
+import { Plus, FileText, MoreHorizontal, CheckCircle2, XCircle, Trash2, Search, X, UserPen, Printer, Mail, MessageCircle, BadgeCheck, Copy, Receipt } from "lucide-react"
+import { registerSaleItems, convertOrder, deleteOrder, deleteOrders, updateOrderCustomer, updateOrderInvoices, type SaleKind } from "@/app/actions/sales"
 import { sendOrderEmail } from "@/app/actions/email"
 import { ColorTag } from "@/components/color-tag"
 import { distinctColors, detectColor, colorFromLabel } from "@/lib/colors"
@@ -72,6 +72,7 @@ type Sale = {
   approvalToken: string | null
   approvedAt: Date | null
   convertedAt: Date | null
+  invoiceNumbers: string | null
   createdAt: Date
 }
 
@@ -103,6 +104,7 @@ type Order = {
   approvalToken: string | null
   approvedAt: Date | null
   convertedAt: Date | null
+  invoiceNumbers: string | null
   items: OrderItem[]
   totalQty: number
   totalBrl: number
@@ -181,6 +183,8 @@ export function SalesManager({
   const [filter, setFilter] = useState<"all" | "sale" | "quote">("all")
   // Busca livre na lista de vendas (código, produto, SKU, cliente).
   const [listQuery, setListQuery] = useState("")
+  const [editInvoicesFor, setEditInvoicesFor] = useState<Order | null>(null)
+  const [editInvoicesText, setEditInvoicesText] = useState("")
   // Filtro por cor na lista de vendas.
   const [listColor, setListColor] = useState<string>("all")
   // Edição de cliente de um pedido já existente.
@@ -226,6 +230,7 @@ export function SalesManager({
         approvalToken: first.approvalToken,
         approvedAt: first.approvedAt,
         convertedAt: first.convertedAt,
+        invoiceNumbers: sorted.find((r) => r.invoiceNumbers)?.invoiceNumbers ?? null,
         items: sorted.map((r) => ({
           id: r.id,
           productId: r.productId,
@@ -259,6 +264,7 @@ export function SalesManager({
         String(o.repId),
         o.customerName ?? "",
         o.customer ?? "",
+        o.invoiceNumbers ?? "",
         ...o.items.flatMap((it) => [it.productName ?? "", it.sku ?? ""]),
       ]
         .join(" ")
@@ -521,6 +527,25 @@ export function SalesManager({
     setEditCustomerText(o.customerId ? "" : o.customer ?? "")
   }
 
+  function openEditInvoices(o: Order) {
+    setEditInvoicesFor(o)
+    setEditInvoicesText(o.invoiceNumbers ?? "")
+  }
+
+  function saveEditInvoices() {
+    const o = editInvoicesFor
+    if (!o) return
+    startTransition(async () => {
+      try {
+        await updateOrderInvoices(o.groupId, editInvoicesText)
+        toast.success("Notas fiscais atualizadas")
+        setEditInvoicesFor(null)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao atualizar notas fiscais")
+      }
+    })
+  }
+
   function saveEditCustomer() {
     const o = editCustomerFor
     if (!o) return
@@ -735,6 +760,12 @@ export function SalesManager({
               <DropdownMenuItem onClick={() => openEditCustomer(o)}>
                 <UserPen className="mr-2 size-4" />
                 Editar cliente
+              </DropdownMenuItem>
+            )}
+            {perms.update && (
+              <DropdownMenuItem onClick={() => openEditInvoices(o)}>
+                <Receipt className="mr-2 size-4" />
+                {o.invoiceNumbers ? "Editar nota fiscal" : "Informar nota fiscal"}
               </DropdownMenuItem>
             )}
             {isQuote && perms.update && (
@@ -1377,6 +1408,41 @@ export function SalesManager({
             </Button>
             <Button onClick={saveEditCustomer} disabled={isPending}>
               {isPending ? "Salvando..." : "Salvar cliente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notas fiscais da venda (separadas por vírgula). */}
+      <Dialog open={editInvoicesFor !== null} onOpenChange={(o) => !o && setEditInvoicesFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Notas fiscais
+              {editInvoicesFor ? ` · ${formatSaleCode(editInvoicesFor.kind, editInvoicesFor.repId)}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              Informe o número da nota fiscal. Para mais de uma nota, separe por vírgula (ex.: 1234, 1235).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="invoice-numbers">Número(s) da NF</Label>
+            <Input
+              id="invoice-numbers"
+              placeholder="1234, 1235"
+              value={editInvoicesText}
+              onChange={(e) => setEditInvoicesText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) saveEditInvoices()
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditInvoicesFor(null)} disabled={isPending}>
+              Cancelar
+            </Button>
+            <Button onClick={saveEditInvoices} disabled={isPending}>
+              {isPending ? "Salvando..." : "Salvar notas"}
             </Button>
           </DialogFooter>
         </DialogContent>

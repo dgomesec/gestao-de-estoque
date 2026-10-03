@@ -38,6 +38,7 @@ export async function getSales(limit = 300) {
       approvalToken: sales.approvalToken,
       approvedAt: sales.approvedAt,
       convertedAt: sales.convertedAt,
+      invoiceNumbers: sales.invoiceNumbers,
       createdAt: sales.createdAt,
     })
     .from(sales)
@@ -46,6 +47,16 @@ export async function getSales(limit = 300) {
     .where(eq(sales.tenantId, ctx.tenantId))
     .orderBy(desc(sales.createdAt))
     .limit(limit)
+}
+
+/** Normaliza "1234 , 1235;1236" em "1234, 1235, 1236" (sem duplicados). */
+function normalizeInvoiceNumbers(raw: string | null | undefined): string | null {
+  const list = (raw ?? '')
+    .split(/[,;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const unique = Array.from(new Set(list))
+  return unique.length ? unique.join(', ') : null
 }
 
 type RegisterInput = {
@@ -607,6 +618,43 @@ export async function convertOrder(groupId: string) {
   await runFlows(ctx.tenantId!, 'quote_converted', groupId)
   await runFlows(ctx.tenantId!, 'sale_created', groupId)
   return { count: rows.length }
+}
+
+/**
+ * Informa/edita os números das Notas Fiscais de um pedido (separados por
+ * vírgula). Vale para todas as linhas do groupId e alimenta relatórios e fluxos.
+ */
+export async function updateOrderInvoices(groupId: string, invoiceNumbers: string) {
+  const ctx = await requirePermission('sales', 'update')
+  if (!groupId) throw new Error('Pedido inválido')
+
+  const normalized = normalizeInvoiceNumbers(invoiceNumbers)
+  if (normalized && normalized.length > 500) throw new Error('Lista de notas fiscais muito longa')
+
+  const updated = await db
+    .update(sales)
+    .set({ invoiceNumbers: normalized })
+    .where(and(eq(sales.groupId, groupId), eq(sales.tenantId, ctx.tenantId)))
+    .returning({ id: sales.id })
+  if (updated.length === 0) throw new Error('Pedido não encontrado')
+
+  await logAudit({
+    action: 'update',
+    resource: 'sales',
+    tenantId: ctx.tenantId,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+    userEmail: ctx.user.email,
+    summary: normalized
+      ? `Notas fiscais do pedido ${groupId} definidas: ${normalized}`
+      : `Notas fiscais do pedido ${groupId} removidas`,
+    metadata: { groupId, invoiceNumbers: normalized },
+  })
+
+  revalidatePath('/vendas')
+  revalidatePath('/relatorios')
+  await runFlows(ctx.tenantId!, 'invoice_updated', groupId)
+  return { invoiceNumbers: normalized }
 }
 
 /**

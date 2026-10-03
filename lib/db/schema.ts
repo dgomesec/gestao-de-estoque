@@ -378,6 +378,8 @@ export const sales = pgTable("sales", {
   approvedAt: timestamp("approvedAt"),
   // Quando um orçamento foi convertido em venda.
   convertedAt: timestamp("convertedAt"),
+  // Números das Notas Fiscais da venda, separados por vírgula (ex.: "1234, 1235").
+  invoiceNumbers: text("invoiceNumbers"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
 

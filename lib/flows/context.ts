@@ -50,6 +50,10 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
   const code = formatSaleCode(order.kind, order.id)
   const productsText = order.items.map((i) => `${i.quantity}x ${i.productName ?? "Produto"}`).join(", ")
   const base = getBaseUrl()
+  const invoiceList = (order.invoiceNumbers ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
 
   const facts: Facts = {
     "pedido.tipo": order.kind,
@@ -61,6 +65,9 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "pedido.quantidade": qty,
     "pedido.lucro": profit,
     "pedido.diaSemana": new Date(order.createdAt).getDay(),
+    "pedido.notasFiscais": invoiceList,
+    "pedido.qtdNotasFiscais": invoiceList.length,
+    "pedido.temNotaFiscal": invoiceList.length > 0,
     "produtos.nomes": order.items.map((i) => i.productName ?? ""),
     "produtos.skus": order.items.map((i) => i.sku ?? ""),
     "cliente.nome": order.customer.name ?? "",
@@ -83,6 +90,7 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "pedido.total": formatMoney(total, order.currency),
     "pedido.itens": String(order.items.length),
     "pedido.produtos": productsText,
+    "pedido.notasFiscais": invoiceList.join(", "),
     "cliente.nome": order.customer.name ?? "Cliente",
     "cliente.email": order.customer.email ?? "",
     "cliente.telefone": order.customer.phone ?? "",
