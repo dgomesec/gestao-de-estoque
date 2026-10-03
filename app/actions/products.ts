@@ -452,6 +452,7 @@ export type ImportResult = {
 export async function importProducts(
   rows: ImportRow[],
   source: ImportSource,
+  itemType?: string | null,
 ): Promise<ImportResult> {
   const ctx = await requirePermission('products', 'create')
 
@@ -574,6 +575,7 @@ export async function importProducts(
         marginMax: String(marginMax),
         reorderLevel,
         importSource: source,
+        itemType: itemType || null,
         createdBy: ctx.user.id,
       },
       quantity,

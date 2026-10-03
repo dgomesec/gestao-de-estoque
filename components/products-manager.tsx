@@ -376,7 +376,7 @@ export function ProductsManager({
         </div>
         {perms.create && (
           <div className="flex gap-2">
-            <ProductImport />
+            <ProductImport segment={segment} />
             <Button onClick={openCreate} className="gap-2">
               <Plus className="size-4" aria-hidden="true" />
               Novo produto
