@@ -1,6 +1,7 @@
 'use server'
 
 import { db } from '@/lib/db'
+import { runFlows } from '@/lib/flows/engine'
 import { products, sales, stockMovements, customers } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
@@ -302,6 +303,7 @@ export async function registerSaleItems(input: RegisterItemsInput) {
   revalidatePath('/estoque')
   revalidatePath('/dashboard')
   revalidatePath('/relatorios')
+  await runFlows(ctx.tenantId!, kind === 'quote' ? 'quote_created' : 'sale_created', groupId)
   return { count: createdIds.length, ids: createdIds, groupId }
 }
 
@@ -602,6 +604,8 @@ export async function convertOrder(groupId: string) {
   revalidatePath('/vendas')
   revalidatePath('/dashboard')
   revalidatePath('/relatorios')
+  await runFlows(ctx.tenantId!, 'quote_converted', groupId)
+  await runFlows(ctx.tenantId!, 'sale_created', groupId)
   return { count: rows.length }
 }
 
@@ -690,6 +694,7 @@ export async function approveQuoteByToken(token: string) {
 
     revalidatePath('/vendas')
     revalidatePath('/dashboard')
+    if (groupId) await runFlows(rows[0].tenantId, 'quote_approved', groupId)
   }
 
   return { ok: true as const, alreadyApproved }

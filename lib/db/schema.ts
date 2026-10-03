@@ -481,3 +481,79 @@ export const auditLogs = pgTable("audit_logs", {
   city: text("city"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
+
+// --- Fluxos de vendas (automações) -------------------------------------------
+// Um fluxo dispara quando ocorre um evento (venda criada, orçamento aprovado...)
+// e as condições (árvore AND/OR/NOT em JSON) são satisfeitas. Então executa as
+// ações em sequência (enviar e-mail, gerar documento PDF, criar tarefa).
+export const flows = pgTable("flows", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  // "sale_created" | "quote_created" | "quote_approved" | "quote_converted"
+  trigger: text("trigger").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  // JSON: ConditionGroup (ver lib/flows/types.ts)
+  conditions: text("conditions").notNull().default("{}"),
+  // JSON: FlowAction[]
+  actions: text("actions").notNull().default("[]"),
+  createdBy: text("createdBy").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+export const flowRuns = pgTable("flow_runs", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
+  flowId: integer("flowId").notNull(),
+  flowName: text("flowName").notNull(),
+  trigger: text("trigger").notNull(),
+  groupId: text("groupId"),
+  // "success" | "error" | "skipped"
+  status: text("status").notNull(),
+  // JSON: lista de { action, ok, message }
+  log: text("log").notNull().default("[]"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+})
+
+export const flowTasks = pgTable("flow_tasks", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
+  flowId: integer("flowId"),
+  groupId: text("groupId"),
+  title: text("title").notNull(),
+  description: text("description"),
+  // "open" | "done"
+  status: text("status").notNull().default("open"),
+  completedBy: text("completedBy"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+})
+
+// Modelos de documento (JSON DocSpec com variáveis {{...}}).
+export const documentTemplates = pgTable("document_templates", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  spec: text("spec").notNull(),
+  createdBy: text("createdBy").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+// Documentos gerados. O PDF é renderizado sob demanda a partir do snapshot
+// (spec resolvido + pedido), mantendo o arquivo privado e sempre com a marca.
+export const generatedDocuments = pgTable("generated_documents", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenantId").notNull(),
+  title: text("title").notNull(),
+  groupId: text("groupId"),
+  templateId: integer("templateId"),
+  flowId: integer("flowId"),
+  source: text("source").notNull().default("template"), // template | ai | flow
+  payload: text("payload").notNull(),
+  createdBy: text("createdBy"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+})

@@ -19,6 +19,7 @@ export type AuditResource =
   | 'users'
   | 'roles'
   | 'sales'
+  | 'flows'
   | 'stock'
   | 'customers'
   | 'settings'
