@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -48,7 +49,16 @@ type ColorStrategy = "variations" | "split"
 // navegador — então mostramos só as primeiras e avisamos sobre o restante.
 const PREVIEW_LIMIT = 100
 
-export function ProductImport() {
+const ITEM_TYPE_OPTIONS = [
+  { value: "gema", label: "Gema" },
+  { value: "joia", label: "Joia" },
+  { value: "semi-joia", label: "Semi-joia" },
+  { value: "escultura", label: "Escultura" },
+]
+
+export function ProductImport({ segment }: { segment?: string }) {
+  const isJewelry = segment === "joalheria"
+  const [itemType, setItemType] = useState<string>("gema")
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState("lote")
   const [rows, setRows] = useState<ImportRow[]>([])
@@ -238,7 +248,7 @@ export function ProductImport() {
     const payload = expandRows()
     startTransition(async () => {
       try {
-        const result = await importProducts(payload, source)
+        const result = await importProducts(payload, source, isJewelry ? itemType : null)
         if (result.imported > 0) {
           toast.success(`${result.imported} produto(s) importado(s) com sucesso.`)
         }
@@ -284,6 +294,26 @@ export function ProductImport() {
           </DialogHeader>
 
           <div className="overflow-y-auto px-6 py-4">
+            {isJewelry && (
+              <div className="mb-4 flex flex-col gap-2">
+                <Label htmlFor="import-item-type">Tipo de produto a importar</Label>
+                <Select value={itemType} onValueChange={(v) => setItemType(v ?? "gema")}>
+                  <SelectTrigger id="import-item-type" className="w-full sm:w-64">
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ITEM_TYPE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Todos os itens deste arquivo serão cadastrados com este tipo e poderão ser filtrados na lista.
+                </p>
+              </div>
+            )}
             <Tabs value={tab} onValueChange={(v) => { setTab(v); reset() }}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="lote" className="gap-2">
