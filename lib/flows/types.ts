@@ -14,6 +14,32 @@ export type FieldType = "number" | "text" | "boolean" | "list"
 
 export type FieldDef = { key: string; label: string; type: FieldType; group: string; options?: { value: string; label: string }[] }
 
+// Campos individuais do cadastro, expostos para cada tipo: cliente.*, pescador.* e fornecedor.*.
+export const PARTY_FIELD_DEFS = [
+  { key: "nome", label: "Nome" },
+  { key: "email", label: "E-mail" },
+  { key: "telefone", label: "Telefone" },
+  { key: "documento", label: "Documento (CPF/CNPJ)" },
+  { key: "rgp", label: "RGP" },
+  { key: "endereco", label: "Endereço" },
+  { key: "bairro", label: "Bairro" },
+  { key: "cidade", label: "Cidade" },
+  { key: "estado", label: "Estado" },
+  { key: "cep", label: "CEP" },
+  { key: "pais", label: "País" },
+  { key: "observacoes", label: "Observações" },
+] as const
+export const PARTY_PREFIXES = [
+  { prefix: "cliente", group: "Cliente", hint: "cadastro do cliente do pedido" },
+  { prefix: "pescador", group: "Pescador", hint: "pescador associado ao pedido (ou o próprio cadastro, se for pescador)" },
+  { prefix: "fornecedor", group: "Fornecedor", hint: "cadastro do fornecedor do pedido" },
+] as const
+export type PartyPrefix = (typeof PARTY_PREFIXES)[number]["prefix"]
+
+const PARTY_FIELDS: FieldDef[] = PARTY_PREFIXES.flatMap((p) =>
+  PARTY_FIELD_DEFS.map((f) => ({ key: `${p.prefix}.${f.key}`, label: `${f.label} (${p.prefix})`, type: "text" as const, group: p.group })),
+)
+
 export const FIELDS: FieldDef[] = [
   { key: "pedido.tipo", label: "Tipo do pedido", type: "text", group: "Pedido", options: [{ value: "sale", label: "Venda" }, { value: "quote", label: "Orçamento" }] },
   { key: "pedido.aprovado", label: "Orçamento aprovado", type: "boolean", group: "Pedido" },
@@ -29,17 +55,10 @@ export const FIELDS: FieldDef[] = [
   { key: "pedido.temNotaFiscal", label: "Possui nota fiscal", type: "boolean", group: "Pedido" },
   { key: "produtos.nomes", label: "Nomes dos produtos", type: "list", group: "Produtos" },
   { key: "produtos.skus", label: "SKUs dos produtos", type: "list", group: "Produtos" },
-  { key: "cliente.nome", label: "Nome do cliente", type: "text", group: "Cliente" },
-  { key: "cliente.email", label: "E-mail do cliente", type: "text", group: "Cliente" },
-  { key: "cliente.telefone", label: "Telefone do cliente", type: "text", group: "Cliente" },
-  { key: "cliente.documento", label: "Documento (CPF/CNPJ)", type: "text", group: "Cliente" },
-  { key: "cliente.cidade", label: "Cidade do cliente", type: "text", group: "Cliente" },
-  { key: "cliente.estado", label: "Estado do cliente", type: "text", group: "Cliente" },
+  ...PARTY_FIELDS,
   { key: "cliente.identificado", label: "Cliente cadastrado", type: "boolean", group: "Cliente" },
   { key: "cliente.tipo", label: "Tipo do cadastro", type: "text", group: "Cliente", options: [{ value: "cliente", label: "Cliente" }, { value: "fornecedor", label: "Fornecedor" }, { value: "pescador", label: "Pescador" }] },
   { key: "pedido.temPescador", label: "Pedido com pescador associado", type: "boolean", group: "Pedido" },
-  { key: "pescador.nome", label: "Nome do pescador associado", type: "text", group: "Pedido" },
-  { key: "pescador.rgp", label: "RGP do pescador associado", type: "text", group: "Pedido" },
 ]
 export const FIELD_MAP = Object.fromEntries(FIELDS.map((f) => [f.key, f])) as Record<string, FieldDef>
 
@@ -107,13 +126,10 @@ export const TEMPLATE_VARIABLES: { key: string; label: string }[] = [
   { key: "pedido.itens", label: "Qtd. de itens" },
   { key: "pedido.produtos", label: "Lista de produtos" },
   { key: "pedido.notasFiscais", label: "Notas fiscais (separadas por vírgula)" },
-  { key: "cliente.nome", label: "Nome do cliente" },
-  { key: "cliente.email", label: "E-mail do cliente" },
-  { key: "cliente.telefone", label: "Telefone do cliente" },
-  { key: "cliente.documento", label: "Documento do cliente" },
   { key: "cliente.tipo", label: "Tipo do cadastro (Cliente, Fornecedor ou Pescador)" },
-  { key: "pescador.nome", label: "Nome do pescador associado" },
-  { key: "pescador.rgp", label: "RGP do pescador associado" },
+  ...PARTY_PREFIXES.flatMap((p) =>
+    PARTY_FIELD_DEFS.map((f) => ({ key: `${p.prefix}.${f.key}`, label: `${f.label} (${p.prefix})` })),
+  ),
   { key: "link.recibo", label: "Link do recibo" },
   { key: "link.aprovacao", label: "Link de aprovação" },
   { key: "hoje", label: "Data de hoje" },
