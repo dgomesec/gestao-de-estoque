@@ -378,6 +378,8 @@ export const sales = pgTable("sales", {
   approvedAt: timestamp("approvedAt"),
   // Quando um orçamento foi convertido em venda.
   convertedAt: timestamp("convertedAt"),
+  // Números das Notas Fiscais da venda, separados por vírgula (ex.: "1234, 1235").
+  invoiceNumbers: text("invoiceNumbers"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
 
@@ -394,6 +396,8 @@ export const customers = pgTable("customers", {
   state: text("state"),
   zipCode: text("zipCode"),
   notes: text("notes"),
+  // "cliente" | "fornecedor" | "pescador" (usado no ramo de aquarismo).
+  partyType: text("partyType"),
   createdBy: text("createdBy").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
@@ -449,7 +453,9 @@ export const settings = pgTable("settings", {
   storeAddress: text("storeAddress"),
   storePhone: text("storePhone"),
   storeEmail: text("storeEmail"),
-})
+  // Ramo de atuação declarado pelo cliente (ex.: "aquarismo").
+  industry: text("industry"),
+  })
 
 // --- Audit & monitoring -----------------------------------------------------
 // Every meaningful action is recorded here: logins, and create/update/delete

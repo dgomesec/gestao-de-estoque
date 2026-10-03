@@ -5,6 +5,7 @@ export const TRIGGERS = [
   { key: "quote_created", label: "Orçamento criado", hint: "Dispara quando um novo orçamento é gerado." },
   { key: "quote_approved", label: "Orçamento aprovado pelo cliente", hint: "Dispara quando o cliente aprova pelo link público." },
   { key: "quote_converted", label: "Orçamento convertido em venda", hint: "Dispara quando um orçamento vira venda." },
+  { key: "invoice_updated", label: "Nota fiscal informada", hint: "Dispara quando os números das notas fiscais de um pedido são salvos." },
 ] as const
 export type TriggerKey = (typeof TRIGGERS)[number]["key"]
 export const TRIGGER_LABELS = Object.fromEntries(TRIGGERS.map((t) => [t.key, t.label])) as Record<TriggerKey, string>
@@ -23,6 +24,9 @@ export const FIELDS: FieldDef[] = [
   { key: "pedido.quantidade", label: "Quantidade total de unidades", type: "number", group: "Pedido" },
   { key: "pedido.lucro", label: "Lucro estimado (R$)", type: "number", group: "Pedido" },
   { key: "pedido.diaSemana", label: "Dia da semana (0=dom ... 6=sáb)", type: "number", group: "Pedido" },
+  { key: "pedido.notasFiscais", label: "Números das notas fiscais", type: "list", group: "Pedido" },
+  { key: "pedido.qtdNotasFiscais", label: "Quantidade de notas fiscais", type: "number", group: "Pedido" },
+  { key: "pedido.temNotaFiscal", label: "Possui nota fiscal", type: "boolean", group: "Pedido" },
   { key: "produtos.nomes", label: "Nomes dos produtos", type: "list", group: "Produtos" },
   { key: "produtos.skus", label: "SKUs dos produtos", type: "list", group: "Produtos" },
   { key: "cliente.nome", label: "Nome do cliente", type: "text", group: "Cliente" },
@@ -98,6 +102,7 @@ export const TEMPLATE_VARIABLES: { key: string; label: string }[] = [
   { key: "pedido.total", label: "Total formatado" },
   { key: "pedido.itens", label: "Qtd. de itens" },
   { key: "pedido.produtos", label: "Lista de produtos" },
+  { key: "pedido.notasFiscais", label: "Notas fiscais (separadas por vírgula)" },
   { key: "cliente.nome", label: "Nome do cliente" },
   { key: "cliente.email", label: "E-mail do cliente" },
   { key: "cliente.telefone", label: "Telefone do cliente" },

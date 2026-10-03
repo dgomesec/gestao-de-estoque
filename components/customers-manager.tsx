@@ -39,6 +39,14 @@ import {
   type CustomerWithStats,
 } from "@/app/actions/customers"
 import { formatMoney, formatDate, type DisplayCurrency } from "@/lib/format"
+import { isAquariumIndustry, PARTY_TYPES, partyTypeLabel } from "@/lib/industries"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { DataPagination, usePagination } from "@/components/ui/data-pagination"
 
 type Perms = { create: boolean; update: boolean; delete: boolean }
@@ -53,17 +61,22 @@ const EMPTY: CustomerInput = {
   state: "",
   zipCode: "",
   notes: "",
+  partyType: "",
 }
 
 export function CustomersManager({
   customers,
   perms,
   currency = "BRL",
+  industry = null,
 }: {
   customers: CustomerWithStats[]
   perms: Perms
   currency?: DisplayCurrency
+  industry?: string | null
 }) {
+  const showPartyType = isAquariumIndustry(industry)
+  const [partyFilter, setPartyFilter] = useState("all")
   const [query, setQuery] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<CustomerWithStats | null>(null)
@@ -72,19 +85,21 @@ export function CustomersManager({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return customers
-    return customers.filter(
-      (c) =>
+    return customers.filter((c) => {
+      if (showPartyType && partyFilter !== "all" && (c.partyType ?? "cliente") !== partyFilter) return false
+      if (!q) return true
+      return (
         c.name.toLowerCase().includes(q) ||
         (c.phone ?? "").toLowerCase().includes(q) ||
         (c.email ?? "").toLowerCase().includes(q) ||
-        (c.document ?? "").toLowerCase().includes(q),
-    )
-  }, [customers, query])
+        (c.document ?? "").toLowerCase().includes(q)
+      )
+    })
+  }, [customers, query, partyFilter, showPartyType])
 
   const { page, setPage, pageSize, setPageSize, pageItems, total, totalPages } = usePagination(
     filtered,
-    query,
+    `${query}|${partyFilter}`,
   )
 
   function openCreate() {
@@ -105,6 +120,7 @@ export function CustomersManager({
       state: c.state ?? "",
       zipCode: c.zipCode ?? "",
       notes: c.notes ?? "",
+      partyType: c.partyType ?? "",
     })
     setDialogOpen(true)
   }
@@ -154,6 +170,21 @@ export function CustomersManager({
             className="pl-9"
           />
         </div>
+        {showPartyType && (
+          <Select value={partyFilter} onValueChange={(v) => setPartyFilter(v ?? "all")}>
+            <SelectTrigger className="w-full sm:w-44" aria-label="Filtrar por tipo">
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os tipos</SelectItem>
+              {PARTY_TYPES.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {perms.create && (
           <Button onClick={openCreate} className="gap-2">
             <Plus className="size-4" aria-hidden="true" />
@@ -169,6 +200,7 @@ export function CustomersManager({
               <TableHeader>
                 <TableRow>
                   <TableHead>Cliente</TableHead>
+                  {showPartyType && <TableHead>Tipo</TableHead>}
                   <TableHead>Contato</TableHead>
                   <TableHead>Localização</TableHead>
                   <TableHead className="text-right">Compras</TableHead>
@@ -179,7 +211,7 @@ export function CustomersManager({
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={showPartyType ? 7 : 6} className="h-32 text-center text-muted-foreground">
                       Nenhum cliente encontrado.
                     </TableCell>
                   </TableRow>
@@ -192,6 +224,11 @@ export function CustomersManager({
                           {c.document ? `Doc. ${c.document}` : `Desde ${formatDate(c.createdAt)}`}
                         </div>
                       </TableCell>
+                      {showPartyType && (
+                        <TableCell>
+                          <Badge variant="outline">{partyTypeLabel(c.partyType)}</Badge>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <div className="flex flex-col gap-0.5 text-sm">
                           {c.phone && (
@@ -276,6 +313,27 @@ export function CustomersManager({
           </DialogHeader>
 
           <div className="grid gap-4 overflow-y-auto px-6 py-4">
+            {showPartyType && (
+              <div className="space-y-1.5">
+                <Label htmlFor="cparty">Tipo de cadastro</Label>
+                <Select
+                  value={form.partyType || "cliente"}
+                  onValueChange={(v) => setForm({ ...form, partyType: v ?? "cliente" })}
+                >
+                  <SelectTrigger id="cparty">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PARTY_TYPES.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label htmlFor="cname">Nome</Label>
               <Input id="cname" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

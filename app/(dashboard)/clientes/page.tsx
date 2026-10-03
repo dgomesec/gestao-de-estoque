@@ -25,6 +25,7 @@ export default async function CustomersPage() {
       <CustomersManager
         customers={customers}
         currency={settings.displayCurrency}
+        industry={settings.industry}
         perms={{
           create: canCreate,
           update: hasPermission(ctx, "customers", "update"),

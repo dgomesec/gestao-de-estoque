@@ -35,6 +35,7 @@ export type Settings = {
   rateUpdatedAt: Date
   rateSource: string | null
   rateCheckedAt: Date | null
+  industry: string | null
 } & StoreInfo
 
 // Minimum interval between live API checks (6 hours) to avoid rate limits (429).
@@ -118,6 +119,7 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
       storeAddress: null,
       storePhone: null,
       storeEmail: null,
+      industry: null,
     }
   }
   return {
@@ -134,6 +136,7 @@ export async function getSettings(tenantId?: string | null): Promise<Settings> {
     storeAddress: row.storeAddress ?? null,
     storePhone: row.storePhone ?? null,
     storeEmail: row.storeEmail ?? null,
+    industry: row.industry ?? null,
   }
 }
 

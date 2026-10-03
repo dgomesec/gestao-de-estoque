@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { customers, sales } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
+import { isValidPartyType } from '@/lib/industries'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
@@ -17,6 +18,7 @@ export type CustomerInput = {
   state?: string
   zipCode?: string
   notes?: string
+  partyType?: string
 }
 
 export type CustomerWithStats = {
@@ -30,6 +32,7 @@ export type CustomerWithStats = {
   state: string | null
   zipCode: string | null
   notes: string | null
+  partyType: string | null
   createdAt: Date
   salesCount: number
   totalSpentBrl: number
@@ -53,6 +56,7 @@ export async function getCustomers(): Promise<CustomerWithStats[]> {
       state: customers.state,
       zipCode: customers.zipCode,
       notes: customers.notes,
+      partyType: customers.partyType,
       createdAt: customers.createdAt,
       salesCount: sql<number>`count(${sales.id}) filter (where ${sales.kind} = 'sale')`,
       totalSpentBrl: sql<number>`coalesce(sum(${sales.totalBrl}) filter (where ${sales.kind} = 'sale'), 0)`,
@@ -76,6 +80,9 @@ function validate(input: CustomerInput) {
     const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())
     if (!ok) throw new Error('E-mail inválido')
   }
+  if (input.partyType && !isValidPartyType(input.partyType)) {
+    throw new Error('Tipo de cadastro inválido')
+  }
 }
 
 function clean(input: CustomerInput) {
@@ -89,6 +96,7 @@ function clean(input: CustomerInput) {
     state: input.state?.trim() || null,
     zipCode: input.zipCode?.trim() || null,
     notes: input.notes?.trim() || null,
+    partyType: input.partyType?.trim() || null,
   }
 }
 

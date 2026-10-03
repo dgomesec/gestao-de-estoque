@@ -29,6 +29,8 @@ export type Order = {
   approvedAt: Date | null
   approvalToken: string | null
   exchangeRate: string
+  // Notas fiscais da venda, separadas por vírgula.
+  invoiceNumbers: string | null
   // Moeda de venda/exibição registrada no momento da venda.
   currency: DisplayCurrency
   customer: {
@@ -89,6 +91,7 @@ function mapRows(
     approvedAt: first.approvedAt,
     approvalToken: first.approvalToken,
     exchangeRate: first.exchangeRate,
+    invoiceNumbers: first.invoiceNumbers,
     currency: toDisplayCurrency(first.currency),
     customer: {
       id: first.customerId,
