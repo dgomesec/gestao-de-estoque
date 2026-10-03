@@ -261,7 +261,13 @@ export function CustomersManager({
                       </TableCell>
                       {showPartyType && (
                         <TableCell>
-                          <Badge variant="outline">{partyTypeLabel(c.partyType)}</Badge>
+                          <Badge
+                            variant={
+                              c.partyType === "pescador" ? "default" : c.partyType === "fornecedor" ? "secondary" : "outline"
+                            }
+                          >
+                            {partyTypeLabel(c.partyType)}
+                          </Badge>
                         </TableCell>
                       )}
                       <TableCell>

@@ -4,6 +4,7 @@ import { customers, sales, tenants } from "@/lib/db/schema"
 import { and, eq } from "drizzle-orm"
 import { getOrderByGroupId, getBaseUrl, type Order } from "@/lib/orders"
 import { formatMoney, formatDate, formatSaleCode } from "@/lib/format"
+import { partyTypeLabel } from "@/lib/industries"
 import type { Facts } from "./evaluate"
 
 export type OrderContext = {
@@ -28,10 +29,12 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
 
   let city = ""
   let state = ""
+  let partyType = "cliente"
   if (order.customer.id) {
     const [c] = await db.select().from(customers).where(eq(customers.id, order.customer.id))
     city = c?.city ?? ""
     state = c?.state ?? ""
+    partyType = c?.partyType ?? "cliente"
   }
 
   const [profitRow] = await db
@@ -77,6 +80,7 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "cliente.cidade": city,
     "cliente.estado": state,
     "cliente.identificado": order.customer.id != null,
+    "cliente.tipo": partyType,
   }
 
   const vars: Record<string, string> = {
@@ -95,6 +99,7 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "cliente.email": order.customer.email ?? "",
     "cliente.telefone": order.customer.phone ?? "",
     "cliente.documento": order.customer.document ?? "",
+    "cliente.tipo": partyTypeLabel(partyType),
     "link.recibo": `${base}/recibo/${order.groupId}`,
     "link.aprovacao": order.approvalToken ? `${base}/orcamento/${order.approvalToken}` : "",
     hoje: formatDate(new Date()),
