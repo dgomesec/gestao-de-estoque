@@ -14,6 +14,30 @@ export type OrderContext = {
   tenantId: string
 }
 
+type CustomerRow = typeof customers.$inferSelect
+
+/** Expande um cadastro em `<prefixo>.<campo>`; sem cadastro, todos os campos ficam vazios. */
+function partyFieldValues(
+  prefix: string,
+  row: CustomerRow | null,
+  fallback?: { name?: string | null; email?: string | null; phone?: string | null; document?: string | null },
+): Record<string, string> {
+  return {
+    [`${prefix}.nome`]: row?.name ?? fallback?.name ?? "",
+    [`${prefix}.email`]: row?.email ?? fallback?.email ?? "",
+    [`${prefix}.telefone`]: row?.phone ?? fallback?.phone ?? "",
+    [`${prefix}.documento`]: row?.document ?? fallback?.document ?? "",
+    [`${prefix}.rgp`]: row?.rgp ?? "",
+    [`${prefix}.endereco`]: row?.addressLine ?? "",
+    [`${prefix}.bairro`]: row?.neighborhood ?? "",
+    [`${prefix}.cidade`]: row?.city ?? "",
+    [`${prefix}.estado`]: row?.state ?? "",
+    [`${prefix}.cep`]: row?.zipCode ?? "",
+    [`${prefix}.pais`]: row?.country ?? "",
+    [`${prefix}.observacoes`]: row?.notes ?? "",
+  }
+}
+
 /** Monta fatos (para condições) e variáveis (para textos/documentos) de um pedido. */
 export async function buildOrderContext(tenantId: string, groupId: string): Promise<OrderContext | null> {
   const order = await getOrderByGroupId(groupId)
@@ -27,13 +51,14 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     .limit(1)
   if (!owner) return null
 
-  let city = ""
-  let state = ""
+  let customerRow: CustomerRow | null = null
   let partyType = "cliente"
   if (order.customer.id) {
-    const [c] = await db.select().from(customers).where(eq(customers.id, order.customer.id))
-    city = c?.city ?? ""
-    state = c?.state ?? ""
+    const [c] = await db
+      .select()
+      .from(customers)
+      .where(and(eq(customers.id, order.customer.id), eq(customers.tenantId, tenantId)))
+    customerRow = c ?? null
     partyType = c?.partyType ?? "cliente"
   }
 
@@ -44,15 +69,21 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
   const profit = profitRows.reduce((s, r) => s + Number(r.p), 0)
 
   const fishermanId = profitRows.find((r) => r.fishermanId != null)?.fishermanId ?? null
-  let fishermanName = ""
-  let fishermanRgp = ""
+  let fishermanRow: CustomerRow | null = null
   if (fishermanId != null) {
     const [f] = await db
-      .select({ name: customers.name, rgp: customers.rgp })
+      .select()
       .from(customers)
       .where(and(eq(customers.id, fishermanId), eq(customers.tenantId, tenantId)))
-    fishermanName = f?.name ?? ""
-    fishermanRgp = f?.rgp ?? ""
+    fishermanRow = f ?? null
+  }
+  // pescador.*: pescador associado ao pedido; sem associação, o próprio cadastro se for do tipo pescador.
+  const pescadorRow = fishermanRow ?? (partyType === "pescador" ? customerRow : null)
+  const fornecedorRow = partyType === "fornecedor" ? customerRow : null
+  const partyVars: Record<string, string> = {
+    ...partyFieldValues("cliente", customerRow, order.customer),
+    ...partyFieldValues("pescador", pescadorRow),
+    ...partyFieldValues("fornecedor", fornecedorRow),
   }
 
   const qty = order.items.reduce((s, i) => s + i.quantity, 0)
@@ -80,17 +111,10 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "pedido.temNotaFiscal": invoiceList.length > 0,
     "produtos.nomes": order.items.map((i) => i.productName ?? ""),
     "produtos.skus": order.items.map((i) => i.sku ?? ""),
-    "cliente.nome": order.customer.name ?? "",
-    "cliente.email": order.customer.email ?? "",
-    "cliente.telefone": order.customer.phone ?? "",
-    "cliente.documento": order.customer.document ?? "",
-    "cliente.cidade": city,
-    "cliente.estado": state,
+    ...partyVars,
     "cliente.identificado": order.customer.id != null,
     "cliente.tipo": partyType,
     "pedido.temPescador": fishermanId != null,
-    "pescador.nome": fishermanName,
-    "pescador.rgp": fishermanRgp,
   }
 
   const vars: Record<string, string> = {
@@ -105,13 +129,9 @@ export async function buildOrderContext(tenantId: string, groupId: string): Prom
     "pedido.itens": String(order.items.length),
     "pedido.produtos": productsText,
     "pedido.notasFiscais": invoiceList.join(", "),
-    "cliente.nome": order.customer.name ?? "Cliente",
-    "cliente.email": order.customer.email ?? "",
-    "cliente.telefone": order.customer.phone ?? "",
-    "cliente.documento": order.customer.document ?? "",
+    ...partyVars,
+    "cliente.nome": partyVars["cliente.nome"] || "Cliente",
     "cliente.tipo": partyTypeLabel(partyType),
-    "pescador.nome": fishermanName,
-    "pescador.rgp": fishermanRgp,
     "link.recibo": `${base}/recibo/${order.groupId}`,
     "link.aprovacao": order.approvalToken ? `${base}/orcamento/${order.approvalToken}` : "",
     hoje: formatDate(new Date()),
